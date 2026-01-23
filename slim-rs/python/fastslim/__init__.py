@@ -92,24 +92,20 @@ def predict(
     """
     if not sparse.isspmatrix_csr(weights):
         weights = sparse.csr_matrix(weights)
-
     if sparse.issparse(user_history):
         history_csr = sparse.csr_matrix(user_history)
         scores = (history_csr @ weights).toarray().ravel()
         if exclude_seen:
             scores[history_csr.indices] = -np.inf
         return scores
-
     history = np.asarray(user_history)
     if history.ndim == 2:
         history = history.ravel()
-
-    scores = history @ weights
-    scores = np.asarray(scores).ravel()
+    scores = np.asarray(history @ weights).ravel()
     if exclude_seen:
         scores[history > 0] = -np.inf
     return scores
 
 
 __all__ = ["fit", "predict"]
-__version__ = "0.1.0"
+__version__ = "0.1.2"
