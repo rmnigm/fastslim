@@ -6,16 +6,22 @@ build-backend = "maturin"
 name = "fastslim"
 version = "0.1.0"
 description = "SLIM (Sparse Linear Methods) recommender system in Rust"
+authors = [
+  { name = "Roman Nigmatullin", email = "roman.nigmatullinm@gmail.com" }
+]
 readme = "README.md"
-requires-python = ">=3.13,<3.14"
+requires-python = ">=3.10,<3.14"
 classifiers = [
     "Programming Language :: Rust",
-    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "License :: OSI Approved :: MIT License",
 ]
+license = "MIT"
+license-files = ["LICEN[CS]E*"]
 dependencies = [
     "numpy>=1.20",
     "scipy>=1.7",
-    "maturin>=1.4",
 ]
 
 [project.optional-dependencies]
