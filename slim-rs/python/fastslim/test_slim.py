@@ -2,6 +2,8 @@
 
 import numpy as np
 from scipy import sparse
+from implicit.datasets.movielens import get_movielens
+from implicit.evaluation import train_test_split
 
 import fastslim
 
@@ -42,5 +44,32 @@ class TestFit:
 
 class TestIntegration:
     def test_full_pipeline(self):
-        # TODO test with normal data
-        pass
+        _, ratings = get_movielens("100k")
+        user_item = ratings.T.tocsr()
+        user_item = (user_item > 0).astype(np.float64)
+
+        train, test = train_test_split(user_item, train_percentage=0.8, random_state=42)
+
+        weights = fastslim.fit(train, lambd=0.1, beta=0.1, max_iter=10)
+
+        rng = np.random.default_rng(42)
+        user_indices = np.arange(train.shape[0])
+        rng.shuffle(user_indices)
+        user_indices = user_indices[:50]
+
+        recalls = []
+        k = 10
+        for user_idx in user_indices:
+            test_items = test[user_idx].indices
+            if test_items.size == 0:
+                continue
+            history = train[user_idx].tocsr()
+            scores = fastslim.predict(weights, history, exclude_seen=True)
+            assert scores.shape == (train.shape[1],)
+            assert np.isfinite(scores).any()
+            assert np.all(np.isneginf(scores[history.indices]))
+            top_k = np.argpartition(scores, -k)[-k:]
+            recalls.append(len(set(top_k) & set(test_items)) / len(test_items))
+
+        assert recalls, "Expected at least one user with test interactions"
+        assert float(np.mean(recalls)) >= 0.15

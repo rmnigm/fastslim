@@ -1,6 +1,6 @@
 """SLIM (Sparse Linear Methods) solver, implemented in Rust."""
 
-from typing import Optional
+from typing import Optional, Union
 import numpy as np
 from scipy import sparse
 
@@ -67,5 +67,49 @@ def fit(
     return weight_matrix
 
 
-__all__ = ["fit"]
+def predict(
+    weights: sparse.spmatrix,
+    user_history: Union[sparse.spmatrix, np.ndarray],
+    *,
+    exclude_seen: bool = True,
+) -> np.ndarray:
+    """
+    Predict item scores for a single user given item-item weights.
+
+    Parameters
+    ----------
+    weights : scipy.sparse.spmatrix
+        Item-item weight matrix (items x items).
+    user_history : scipy.sparse.spmatrix or numpy.ndarray
+        User interaction vector (items,) or a 1 x items sparse row.
+    exclude_seen : bool, default=True
+        If True, set scores for seen items to -inf.
+
+    Returns
+    -------
+    numpy.ndarray
+        Dense score vector of shape (items,).
+    """
+    if not sparse.isspmatrix_csr(weights):
+        weights = sparse.csr_matrix(weights)
+
+    if sparse.issparse(user_history):
+        history_csr = sparse.csr_matrix(user_history)
+        scores = (history_csr @ weights).toarray().ravel()
+        if exclude_seen:
+            scores[history_csr.indices] = -np.inf
+        return scores
+
+    history = np.asarray(user_history)
+    if history.ndim == 2:
+        history = history.ravel()
+
+    scores = history @ weights
+    scores = np.asarray(scores).ravel()
+    if exclude_seen:
+        scores[history > 0] = -np.inf
+    return scores
+
+
+__all__ = ["fit", "predict"]
 __version__ = "0.1.0"
