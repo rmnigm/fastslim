@@ -1,116 +1,152 @@
 use numpy::PyReadonlyArray1;
 use pyo3::prelude::*;
 use rayon::prelude::*;
+use rayon::ThreadPoolBuilder;
 use std::collections::HashMap;
 
-fn get_column(
-    data: &[f64],
-    indices: &[usize],
-    indptr: &[usize],
-    n_rows: usize,
-    col: usize,
-) -> Vec<(usize, f64)> {
-    (0..n_rows)
-        .filter_map(|row| {
-            let row_indices = &indices[indptr[row]..indptr[row + 1]];
-            row_indices
-                .binary_search(&col)
-                .ok()
-                .map(|pos| (row, data[indptr[row] + pos]))
-        })
-        .collect()
+const EPS: f64 = 0.0;
+const ACTIVE_WARM_ITER: usize = 2;
+const TOL: f64 = 1e-6;
+
+struct Gram {
+    diag: Vec<f64>,
+    nbrs: Vec<Vec<(usize, f64)>>,
 }
 
-fn sparse_dot(a: &[(usize, f64)], b: &[(usize, f64)]) -> f64 {
-    let (mut i, mut j, mut dot) = (0, 0, 0.0);
-    while i < a.len() && j < b.len() {
-        match a[i].0.cmp(&b[j].0) {
-            std::cmp::Ordering::Less => i += 1,
-            std::cmp::Ordering::Greater => j += 1,
-            std::cmp::Ordering::Equal => {
-                dot = a[i].1.mul_add(b[j].1, dot);
-                i += 1;
-                j += 1;
-            }
-        }
-    }
-    dot
-}
-
-struct PrecomputedDotProduct(HashMap<(usize, usize), f64>);
-
-impl PrecomputedDotProduct {
-    fn new(
+impl Gram {
+    fn from_csr(
         data: &[f64],
         indices: &[usize],
         indptr: &[usize],
         n_rows: usize,
         n_cols: usize,
     ) -> Self {
-        let cols: Vec<_> = (0..n_cols)
-            .into_par_iter()
-            .map(|c| get_column(data, indices, indptr, n_rows, c))
-            .collect();
-
-        let mut dots = HashMap::new();
-        for j in 0..n_cols {
-            for k in j..n_cols {
-                let d = sparse_dot(&cols[j], &cols[k]);
-                if d != 0.0 {
-                    dots.insert((j, k), d);
-                    if j != k {
-                        dots.insert((k, j), d);
-                    }
-                }
+        let mut diag = vec![0.0; n_cols];
+        for row in 0..n_rows {
+            let start = indptr[row];
+            let end = indptr[row + 1];
+            for idx in start..end {
+                let col = indices[idx];
+                let val = data[idx];
+                diag[col] = val.mul_add(val, diag[col]);
             }
         }
 
-        Self(dots)
-    }
+        let pairs = (0..n_rows)
+            .into_par_iter()
+            .fold(HashMap::new, |mut local, row| {
+                let start = indptr[row];
+                let end = indptr[row + 1];
+                let row_indices = &indices[start..end];
+                let row_data = &data[start..end];
+                let len = row_indices.len();
+                for a in 0..len {
+                    let ia = row_indices[a];
+                    let va = row_data[a];
+                    for b in (a + 1)..len {
+                        let ib = row_indices[b];
+                        let vb = row_data[b];
+                        let (lo, hi) = if ia < ib { (ia, ib) } else { (ib, ia) };
+                        let key = ((lo as u64) << 32) | (hi as u64);
+                        let entry = local.entry(key).or_insert(0.0);
+                        *entry = va.mul_add(vb, *entry);
+                    }
+                }
+                local
+            })
+            .reduce(HashMap::new, |mut acc, local| {
+                for (key, val) in local {
+                    let entry = acc.entry(key).or_insert(0.0);
+                    *entry += val;
+                }
+                acc
+            });
 
-    fn dot(&self, j: usize, k: usize) -> f64 {
-        self.0.get(&(j, k)).copied().unwrap_or(0.0)
-    }
-
-    fn norm(&self, j: usize) -> f64 {
-        self.dot(j, j)
+        let mut nbrs: Vec<Vec<(usize, f64)>> = vec![Vec::new(); n_cols];
+        for (key, val) in pairs {
+            if val.abs() <= EPS {
+                continue;
+            }
+            let a = (key >> 32) as usize;
+            let b = (key & 0xFFFF_FFFF) as usize;
+            nbrs[a].push((b, val));
+            nbrs[b].push((a, val));
+        }
+        Self { diag, nbrs }
     }
 }
 
-fn solve_item(
-    i: usize,
-    p: &PrecomputedDotProduct,
-    lambda: f64,
-    beta: f64,
-    n: usize,
-    max_iter: usize,
-) -> Vec<(usize, f64)> {
-    if p.norm(i) < lambda * lambda {
+fn solve_item(i: usize, gram: &Gram, lambd: f64, beta: f64, max_iter: usize) -> Vec<(usize, f64)> {
+    if gram.diag[i] < lambd * lambd {
         return vec![];
     }
-    let mut w = vec![0.0; n];
-    for _ in 0..max_iter {
-        for k in 0..n {
-            let norm_k = p.norm(k);
-            if k == i || norm_k == 0.0 {
-                continue;
+    if gram.nbrs[i].is_empty() {
+        return vec![];
+    }
+    let mut cand = Vec::new();
+    let mut r = Vec::new();
+    let mut pos: HashMap<usize, usize> = HashMap::new();
+    for (k, val) in gram.nbrs[i].iter() {
+        if *val < lambd {
+            continue;
+        }
+        let t = cand.len();
+        cand.push(*k);
+        r.push(*val);
+        pos.insert(*k, t);
+    }
+    let m = cand.len();
+    if m == 0 {
+        return vec![];
+    }
+    let mut w = vec![0.0; m];
+    let mut active: Vec<usize> = (0..m).collect();
+    for iter in 0..max_iter {
+        let mut max_abs_delta = 0.0;
+        let mut next_active = Vec::new();
+        for &t in active.iter() {
+            let k = cand[t];
+            let diag_k = gram.diag[k];
+            let a = diag_k + beta;
+            let c = r[t] + diag_k * w[t];
+            let w_new = ((c - lambd) / a).max(0.0);
+            let delta = w_new - w[t];
+            if delta != 0.0 {
+                w[t] = w_new;
+                for (j, val) in gram.nbrs[k].iter() {
+                    if let Some(&pos_j) = pos.get(j) {
+                        r[pos_j] -= val * delta;
+                    }
+                }
+                r[t] -= diag_k * delta;
+                let abs_delta = delta.abs();
+                if abs_delta > max_abs_delta {
+                    max_abs_delta = abs_delta;
+                }
             }
-            let dot_ik = p.dot(i, k);
-            if dot_ik < lambda {
-                w[k] = 0.0;
-                continue;
+            if iter >= ACTIVE_WARM_ITER && (w_new != 0.0 || c > lambd) {
+                next_active.push(t);
             }
-            let sum: f64 = (0..n)
-                .filter(|&j| j != k && j != i && w[j] != 0.0)
-                .map(|j| w[j] * p.dot(j, k))
-                .sum();
-            w[k] = ((dot_ik - sum - lambda) / (norm_k + beta)).max(0.0);
+        }
+        if iter >= ACTIVE_WARM_ITER {
+            if next_active.is_empty() {
+                break;
+            }
+            active = next_active;
+        }
+        if max_abs_delta < TOL {
+            break;
         }
     }
-
     w.into_iter()
         .enumerate()
-        .filter(|&(_, v)| v > 0.0)
+        .filter_map(|(t, val)| {
+            if val > 0.0 {
+                Some((cand[t], val))
+            } else {
+                None
+            }
+        })
         .collect()
 }
 
@@ -144,37 +180,43 @@ fn solve_slim(
     let data: Vec<f64> = data.as_slice()?.to_vec();
     let indices: Vec<usize> = indices.as_slice()?.iter().map(|&x| x as usize).collect();
     let indptr: Vec<usize> = indptr.as_slice()?.iter().map(|&x| x as usize).collect();
-
-    if let Some(t) = n_threads {
-        rayon::ThreadPoolBuilder::new()
-            .num_threads(t)
-            .build_global()
-            .ok();
-    }
-
+    let pool = if let Some(t) = n_threads {
+        Some(
+            ThreadPoolBuilder::new()
+                .num_threads(t)
+                .build()
+                .map_err(|err| {
+                    PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(err.to_string())
+                })?,
+        )
+    } else {
+        None
+    };
     let (rows, cols, weights) = py.allow_threads(|| {
-        let p = PrecomputedDotProduct::new(&data, &indices, &indptr, n_rows, n_cols);
-
-        let results: Vec<_> = (0..n_cols)
-            .into_par_iter()
-            .map(|i| solve_item(i, &p, lambd, beta, n_cols, max_iter))
-            .collect();
-
-        let mut rows = vec![];
-        let mut cols = vec![];
-        let mut weights = vec![];
-
-        for (col, item_weights) in results.into_iter().enumerate() {
-            for (row, w) in item_weights {
-                rows.push(row);
-                cols.push(col);
-                weights.push(w);
+        let run = || {
+            let gram = Gram::from_csr(&data, &indices, &indptr, n_rows, n_cols);
+            let results: Vec<_> = (0..n_cols)
+                .into_par_iter()
+                .map(|i| solve_item(i, &gram, lambd, beta, max_iter))
+                .collect();
+            let mut rows = vec![];
+            let mut cols = vec![];
+            let mut weights = vec![];
+            for (col, item_weights) in results.into_iter().enumerate() {
+                for (row, w) in item_weights {
+                    rows.push(row);
+                    cols.push(col);
+                    weights.push(w);
+                }
             }
+            (rows, cols, weights)
+        };
+        if let Some(ref pool) = pool {
+            pool.install(run)
+        } else {
+            run()
         }
-
-        (rows, cols, weights)
     });
-
     Ok(SlimResult {
         rows,
         cols,
