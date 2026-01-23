@@ -57,7 +57,5 @@ jobs:
         run: uv python install ${{ matrix.python-version }}
       - name: Install dependencies and build
         run: uv sync --all-extras --dev
-      - name: Build Rust extension
-        run: uv run maturin develop
       - name: Run tests
-        run: uv run pytest -v
+        run: uv run pytest
