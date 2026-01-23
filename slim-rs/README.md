@@ -62,13 +62,13 @@ uv run pytest
 ## Project Structure
 
 ```
-fastslim/
+slim-rs/
 ├── Cargo.toml
 ├── pyproject.toml
 ├── src/
 │   └── lib.rs           # Rust solver
 └── python/
-    └── slim/
+    └── fastslim/
         ├── __init__.py  # Python API
         └── test_slim.py # Tests
 ```
