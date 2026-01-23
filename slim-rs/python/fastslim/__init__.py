@@ -108,4 +108,4 @@ def predict(
 
 
 __all__ = ["fit", "predict"]
-__version__ = "0.1.2"
+__version__ = "0.1.3"

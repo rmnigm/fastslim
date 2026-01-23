@@ -1,14 +1,10 @@
 # fastslim
 Rust implementation of [SLIM (**S**parse **Li**near **M**ethods)](https://ieeexplore.ieee.org/document/6137254) for item-based collaborative filtering with parallel computation.
 
-## Installation
-
-```bash
-uv sync
-uv run maturin develop
-```
-
 ## Usage
+```bash
+uv add fastslim
+```
 
 ```python
 import fastslim
@@ -23,6 +19,12 @@ weights = fastslim.fit(
     lambd=0.5,  # L1 regularization (sparsity)
     beta=0.5,     # L2 regularization
 )
+```
+
+### Development
+
+```bash
+uv sync --extra dev
 ```
 
 ## API
@@ -64,14 +66,14 @@ $$
 w_{ik} = \max\left(0, \frac{\langle a_i, a_k \rangle - \sum_{j \ne k} w_{ij} \langle a_j, a_k \rangle - \lambda}{\|a_k\|^2 + \beta} \right)
 $$
 
-### Practical speedups (why they work)
+### Practical speedups
 
 These follow directly from the non-negativity constraint and the structure of $P = X^T X$:
 
 - If $\langle a_i, a_k \rangle < \lambda$, then even with all other weights zero the update is non-positive, so $w_{ik}$ will always be 0. We skip such coordinates.
 - If for item $i$ the interaction norm is too small ($P_{ii} < \lambda^2$), the entire solution is zero and we can skip the item.
 
-### Implementation (step-by-step)
+### Implementation
 
 1) `Gram::from_csr(...)` - build the Gram matrix $P = X^T X$ in sparse form (from CSR rows).
    - Diagonal: `P_kk = sum(value^2)` per item.
