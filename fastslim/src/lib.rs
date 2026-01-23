@@ -40,7 +40,13 @@ fn sparse_dot(a: &[(usize, f64)], b: &[(usize, f64)]) -> f64 {
 struct PrecomputedDotProduct(HashMap<(usize, usize), f64>);
 
 impl PrecomputedDotProduct {
-    fn new(data: &[f64], indices: &[usize], indptr: &[usize], n_rows: usize, n_cols: usize) -> Self {
+    fn new(
+        data: &[f64],
+        indices: &[usize],
+        indptr: &[usize],
+        n_rows: usize,
+        n_cols: usize,
+    ) -> Self {
         let cols: Vec<_> = (0..n_cols)
             .into_par_iter()
             .map(|c| get_column(data, indices, indptr, n_rows, c))
@@ -71,7 +77,14 @@ impl PrecomputedDotProduct {
     }
 }
 
-fn solve_item(i: usize, p: &PrecomputedDotProduct, lambda: f64, beta: f64, n: usize, max_iter: usize) -> Vec<(usize, f64)> {
+fn solve_item(
+    i: usize,
+    p: &PrecomputedDotProduct,
+    lambda: f64,
+    beta: f64,
+    n: usize,
+    max_iter: usize,
+) -> Vec<(usize, f64)> {
     if p.norm(i) < lambda * lambda {
         return vec![];
     }
@@ -115,6 +128,7 @@ pub struct SlimResult {
 
 #[pyfunction]
 #[pyo3(signature = (data, indices, indptr, n_rows, n_cols, lambd=0.5, beta=0.5, max_iter=100, n_threads=None))]
+#[allow(clippy::too_many_arguments)]
 fn solve_slim(
     py: Python<'_>,
     data: PyReadonlyArray1<f64>,
@@ -132,7 +146,10 @@ fn solve_slim(
     let indptr: Vec<usize> = indptr.as_slice()?.iter().map(|&x| x as usize).collect();
 
     if let Some(t) = n_threads {
-        rayon::ThreadPoolBuilder::new().num_threads(t).build_global().ok();
+        rayon::ThreadPoolBuilder::new()
+            .num_threads(t)
+            .build_global()
+            .ok();
     }
 
     let (rows, cols, weights) = py.allow_threads(|| {
@@ -158,7 +175,12 @@ fn solve_slim(
         (rows, cols, weights)
     });
 
-    Ok(SlimResult { rows, cols, data: weights, shape: (n_cols, n_cols) })
+    Ok(SlimResult {
+        rows,
+        cols,
+        data: weights,
+        shape: (n_cols, n_cols),
+    })
 }
 
 #[pymodule]

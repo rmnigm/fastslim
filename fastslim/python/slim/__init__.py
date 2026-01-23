@@ -1,6 +1,5 @@
 """SLIM (Sparse Linear Methods) solver, implemented in Rust."""
 
-
 from typing import Optional
 import numpy as np
 from scipy import sparse

@@ -19,12 +19,9 @@ interactions = sparse.random(1000, 500, density=0.01, format='csr')
 # Fit model
 weights = fastslim.fit(
     interactions,
-    lambda_=0.5,  # L1 regularization (sparsity)
+    lambd=0.5,  # L1 regularization (sparsity)
     beta=0.5,     # L2 regularization
 )
-
-# Predict scores
-scores = slim.predict(interactions, weights)
 ```
 
 ## API

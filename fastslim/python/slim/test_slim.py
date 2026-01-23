@@ -10,7 +10,7 @@ class TestFit:
     def test_basic_fit(self):
         np.random.seed(42)
 
-        interactions = sparse.random(50, 30, density=0.1, format='csr')
+        interactions = sparse.random(50, 30, density=0.1, format="csr")
         weights = slim.fit(interactions, lambd=0.5, beta=0.5, max_iter=50)
 
         assert weights.shape == (30, 30)
@@ -21,7 +21,7 @@ class TestFit:
     def test_input_conversion(self):
         np.random.seed(42)
 
-        csr = sparse.random(20, 15, density=0.1, format='csr')
+        csr = sparse.random(20, 15, density=0.1, format="csr")
         coo = csr.tocoo()
         csc = csr.tocsc()
 
