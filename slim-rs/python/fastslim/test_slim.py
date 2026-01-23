@@ -3,7 +3,7 @@
 import numpy as np
 from scipy import sparse
 
-import slim
+import fastslim
 
 
 class TestFit:
@@ -11,7 +11,7 @@ class TestFit:
         np.random.seed(42)
 
         interactions = sparse.random(50, 30, density=0.1, format="csr")
-        weights = slim.fit(interactions, lambd=0.5, beta=0.5, max_iter=50)
+        weights = fastslim.fit(interactions, lambd=0.5, beta=0.5, max_iter=50)
 
         assert weights.shape == (30, 30)
         assert sparse.issparse(weights)
@@ -25,16 +25,16 @@ class TestFit:
         coo = csr.tocoo()
         csc = csr.tocsc()
 
-        w1 = slim.fit(csr, lambd=0.5, beta=0.5, max_iter=20)
-        w2 = slim.fit(coo, lambd=0.5, beta=0.5, max_iter=20)
-        w3 = slim.fit(csc, lambd=0.5, beta=0.5, max_iter=20)
+        w1 = fastslim.fit(csr, lambd=0.5, beta=0.5, max_iter=20)
+        w2 = fastslim.fit(coo, lambd=0.5, beta=0.5, max_iter=20)
+        w3 = fastslim.fit(csc, lambd=0.5, beta=0.5, max_iter=20)
 
         np.testing.assert_array_almost_equal(w1.toarray(), w2.toarray())
         np.testing.assert_array_almost_equal(w1.toarray(), w3.toarray())
 
     def test_empty_matrix(self):
         interactions = sparse.csr_matrix((10, 5))
-        weights = slim.fit(interactions, lambd=0.5, beta=0.5)
+        weights = fastslim.fit(interactions, lambd=0.5, beta=0.5)
 
         assert weights.shape == (5, 5)
         assert weights.nnz == 0, "Empty input should produce empty weights"

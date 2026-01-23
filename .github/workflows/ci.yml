@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: fastslim
+        working-directory: slim-rs
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -34,9 +34,9 @@ jobs:
       - name: Set up Python
         run: uv python install
       - name: Ruff check
-        run: uvx ruff check fastslim/python/
+        run: uvx ruff check slim-rs/python/
       - name: Ruff format check
-        run: uvx ruff format --check fastslim/python/
+        run: uvx ruff format --check slim-rs/python/
 
   build-and-test:
     runs-on: ${{ matrix.os }}
@@ -46,7 +46,7 @@ jobs:
         python-version: ['3.13']
     defaults:
       run:
-        working-directory: fastslim
+        working-directory: slim-rs
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable

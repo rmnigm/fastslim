@@ -1,10 +1,11 @@
 # fastslim
 Rust implementation of [SLIM (**S**parse **Li**near **M**ethods)](https://ieeexplore.ieee.org/document/6137254) for item-based collaborative filtering with parallel computation.
 
-## Installation Usage
+## Installation
 
 ```bash
 uv sync
+uv run maturin develop
 ```
 
 ## Usage

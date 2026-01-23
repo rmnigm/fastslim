@@ -27,9 +27,9 @@ dev = [
 [tool.maturin]
 features = ["pyo3/extension-module"]
 python-source = "python"
-module-name = "slim._slim_rs"
+module-name = "fastslim._slim_rs"
 
 [tool.pytest.ini_options]
-testpaths = ["python/slim"]
+testpaths = ["python/fastslim"]
 python_files = "test_*.py"
 python_functions = "test_*"
