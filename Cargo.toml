@@ -7,7 +7,20 @@ edition = "2021"
 name = "_slim_rs"
 crate-type = ["cdylib"]
 
+[features]
+default = []
+# Enabled by maturin (see pyproject.toml [tool.maturin]) when building the
+# Python wheel. It must stay off for `cargo test`, otherwise the test binary
+# cannot link against libpython. If the build script cannot find a Python
+# interpreter with a shared library, point it at the project venv:
+#   PYO3_PYTHON=$(pwd)/.venv/bin/python cargo test
+extension-module = ["pyo3/extension-module"]
+
 [dependencies]
-pyo3 = { version = "0.23", features = ["extension-module", "abi3-py310"] }
+pyo3 = { version = "0.23", features = ["abi3-py310"] }
 numpy = "0.23"
 rayon = "1.10"
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
