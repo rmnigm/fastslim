@@ -10,46 +10,101 @@ env:
 
 jobs:
   lint-rust:
+    name: Rust lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
       - name: Check formatting
         run: cargo fmt --check
       - name: Clippy
-        run: cargo clippy -- -D warnings
+        run: cargo clippy --all-targets -- -D warnings
 
-  lint-python:
+  test-rust:
+    name: Rust tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # `cargo test` builds a test binary that links against libpython (the
+      # `extension-module` pyo3 feature is off by default for exactly this
+      # reason), so an interpreter with a shared library must be available.
+      - uses: actions/setup-python@v5
         with:
-          enable-cache: true
-      - name: Set up Python
-        run: uv python install
-      - name: Ruff check
-        run: uvx ruff check python/
-      - name: Ruff format check
-        run: uvx ruff format --check python/
+          python-version: "3.12"
+      - name: Point pyo3 at the interpreter
+        run: |
+          python -c "import sys; print('PYO3_PYTHON=' + sys.executable)" >> "$GITHUB_ENV"
+          python -c "import sysconfig; print('LD_LIBRARY_PATH=' + sysconfig.get_config_var('LIBDIR'))" >> "$GITHUB_ENV"
+      - name: Cargo test
+        run: cargo test
 
-  build-and-test:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-        python-version: ['3.13']
+  lint-python:
+    name: Python lint
+    runs-on: ubuntu-latest
+    env:
+      UV_PYTHON: "3.12"
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
       - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
-      - name: Set up Python ${{ matrix.python-version }}
+      # Uses the ruff pinned in the `dev` dependency group, so CI, pre-commit
+      # and local runs all agree on the version.
+      - name: Install dependencies
+        run: uv sync
+      - name: Ruff check
+        run: uv run ruff check python/ benchmarks/ $([ -d tests ] && echo tests/)
+      - name: Ruff format check
+        run: uv run ruff format --check python/ benchmarks/ $([ -d tests ] && echo tests/)
+
+  build-and-test:
+    name: Test (py${{ matrix.python-version }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        # Oldest supported and newest with numpy/scipy wheels available.
+        python-version: ["3.10", "3.14"]
+    env:
+      UV_PYTHON: ${{ matrix.python-version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - name: Install Python ${{ matrix.python-version }}
         run: uv python install ${{ matrix.python-version }}
       - name: Install dependencies and build
-        run: uv sync --all-extras --dev
+        run: uv sync
       - name: Run tests
-        run: uv run pytest
+        run: uv run pytest -q -m "not slow"
+
+  integration-test:
+    name: Integration tests (slow)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      UV_PYTHON: "3.12"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      # The `bench` group brings in implicit/h5py, needed by the MovieLens
+      # tests, which download the dataset.
+      - name: Install dependencies and build
+        run: uv sync --group bench
+      - name: Run full test suite
+        run: uv run pytest -q
