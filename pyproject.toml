@@ -33,7 +33,7 @@ dev = [
 ]
 
 [tool.maturin]
-features = ["pyo3/extension-module", "pyo3/abi3-py310"]
+features = ["extension-module"]
 python-source = "python"
 module-name = "fastslim._slim_rs"
 
