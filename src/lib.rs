@@ -17,7 +17,7 @@ type CscArrays<'py> = (
 );
 
 #[pyfunction]
-#[pyo3(signature = (data, indices, indptr, n_rows, n_cols, lambd=0.5, beta=0.5, max_iter=100, n_threads=None))]
+#[pyo3(signature = (data, indices, indptr, n_rows, n_cols, lambd=0.5, beta=0.5, max_iter=100, tol=1e-6, n_threads=None))]
 #[allow(clippy::too_many_arguments)]
 fn solve_slim<'py>(
     py: Python<'py>,
@@ -29,6 +29,7 @@ fn solve_slim<'py>(
     lambd: f64,
     beta: f64,
     max_iter: usize,
+    tol: f64,
     n_threads: Option<usize>,
 ) -> PyResult<CscArrays<'py>> {
     let data: Vec<f64> = data.as_slice()?.to_vec();
@@ -38,6 +39,7 @@ fn solve_slim<'py>(
         lambd,
         beta,
         max_iter,
+        tol,
         n_threads,
     };
     let out = py
