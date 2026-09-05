@@ -1,119 +1,29 @@
-"""SLIM (Sparse Linear Methods) solver, implemented in Rust."""
+"""fastslim -- SLIM (Sparse Linear Methods) item-item recommender in Rust.
+
+>>> import numpy as np
+>>> from scipy import sparse
+>>> import fastslim
+>>> X = sparse.csr_matrix(np.array([[1, 1, 0], [1, 1, 1], [0, 1, 1]]))
+>>> W = fastslim.fit(X, lambd=0.1, beta=0.1)
+>>> fastslim.recommend(W, X[0], k=1)
+array([2])
+"""
 
 from importlib import metadata as _metadata
 
-import numpy as np
-from scipy import sparse
+from . import metrics
+from ._api import fit, predict, recommend
+from .estimator import SLIM, NotFittedError
 
-from ._slim_rs import solve_slim as _solve_slim
-
-
-def fit(
-    interaction_matrix: sparse.spmatrix,
-    lambd: float = 0.5,
-    beta: float = 0.5,
-    max_iter: int = 100,
-    tol: float = 1e-6,
-    n_threads: int | None = None,
-) -> sparse.csr_matrix:
-    """
-    Fit SLIM model using coordinate descent.
-
-    Optimizes the following loss for each item i:
-    L_i = 0.5 * ||a_i - sum_j w_ij * a_j||^2
-          + lambda * sum_j |w_ij| + (beta / 2) * sum_j w_ij^2
-
-    Parameters
-    ----------
-    interaction_matrix : scipy.sparse.spmatrix
-        User-item interaction matrix (users x items).
-        Will be converted to CSR format if needed.
-    lambd : float, default=0.5
-        L1 regularization coefficient (controls sparsity).
-    beta : float, default=0.5
-        L2 regularization coefficient (controls magnitude).
-    max_iter : int, default=100
-        Maximum number of coordinate descent passes per item.
-    tol : float, default=1e-6
-        Convergence tolerance on the largest weight change in a pass.
-    n_threads : int, optional
-        Number of threads for parallel computation.
-        If None, uses all available cores.
-
-    Returns
-    -------
-    scipy.sparse.csr_matrix
-        Item-item similarity matrix W (items x items).
-        Predictions: scores = interaction_matrix @ W
-    """
-    if not sparse.isspmatrix_csr(interaction_matrix):
-        interaction_matrix = sparse.csr_matrix(interaction_matrix)
-
-    interaction_matrix = interaction_matrix.astype(np.float64)
-    n_users, n_items = interaction_matrix.shape
-
-    indptr, indices, data = _solve_slim(
-        data=interaction_matrix.data,
-        indices=interaction_matrix.indices,
-        indptr=interaction_matrix.indptr,
-        n_rows=n_users,
-        n_cols=n_items,
-        lambd=lambd,
-        beta=beta,
-        max_iter=max_iter,
-        tol=tol,
-        n_threads=n_threads,
-    )
-
-    weight_matrix = sparse.csc_matrix(
-        (data, indices, indptr),
-        shape=(n_items, n_items),
-    ).tocsr()
-
-    return weight_matrix
-
-
-def predict(
-    weights: sparse.spmatrix,
-    user_history: sparse.spmatrix | np.ndarray,
-    *,
-    exclude_seen: bool = True,
-) -> np.ndarray:
-    """
-    Predict item scores for a single user given item-item weights.
-
-    Parameters
-    ----------
-    weights : scipy.sparse.spmatrix
-        Item-item weight matrix (items x items).
-    user_history : scipy.sparse.spmatrix or numpy.ndarray
-        User interaction vector (items,) or a 1 x items sparse row.
-    exclude_seen : bool, default=True
-        If True, set scores for seen items to -inf.
-
-    Returns
-    -------
-    numpy.ndarray
-        Dense score vector of shape (items,).
-    """
-    if not sparse.isspmatrix_csr(weights):
-        weights = sparse.csr_matrix(weights)
-    if sparse.issparse(user_history):
-        history_csr = sparse.csr_matrix(user_history)
-        scores = (history_csr @ weights).toarray().ravel()
-        if exclude_seen:
-            scores[history_csr.indices] = -np.inf
-        return scores
-    history = np.asarray(user_history)
-    if history.ndim == 2:
-        history = history.ravel()
-    scores = np.asarray(history @ weights).ravel()
-    if exclude_seen:
-        scores[history > 0] = -np.inf
-    return scores
-
-
-__all__ = ["fit", "predict"]
+__all__ = [
+    "SLIM",
+    "NotFittedError",
+    "__version__",
+    "fit",
+    "metrics",
+    "predict",
+    "recommend",
+]
 
 try:
     __version__ = _metadata.version("fastslim")
