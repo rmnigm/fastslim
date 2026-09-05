@@ -47,20 +47,21 @@ fn solve_item(i: usize, gram: &Gram, lambd: f64, beta: f64, max_iter: usize) -> 
     if gram.diag[i] < lambd * lambd {
         return vec![];
     }
-    if gram.nbrs[i].is_empty() {
+    let (row_idx, row_val) = gram.row(i);
+    if row_idx.is_empty() {
         return vec![];
     }
     let mut cand = Vec::new();
     let mut r = Vec::new();
     let mut pos: HashMap<usize, usize> = HashMap::new();
-    for (k, val) in gram.nbrs[i].iter() {
-        if *val < lambd {
+    for (&k, &val) in row_idx.iter().zip(row_val) {
+        if val < lambd {
             continue;
         }
         let t = cand.len();
-        cand.push(*k);
-        r.push(*val);
-        pos.insert(*k, t);
+        cand.push(k as usize);
+        r.push(val);
+        pos.insert(k as usize, t);
     }
     let m = cand.len();
     if m == 0 {
@@ -80,8 +81,9 @@ fn solve_item(i: usize, gram: &Gram, lambd: f64, beta: f64, max_iter: usize) -> 
             let delta = w_new - w[t];
             if delta != 0.0 {
                 w[t] = w_new;
-                for (j, val) in gram.nbrs[k].iter() {
-                    if let Some(&pos_j) = pos.get(j) {
+                let (nb_idx, nb_val) = gram.row(k);
+                for (&j, &val) in nb_idx.iter().zip(nb_val) {
+                    if let Some(&pos_j) = pos.get(&(j as usize)) {
                         r[pos_j] -= val * delta;
                     }
                 }
@@ -141,7 +143,7 @@ fn assemble(n_items: usize, per_item: Vec<Vec<(usize, f64)>>) -> CscOutput {
 /// Fit SLIM on a CSR user-item matrix and return the item-item weights.
 pub fn solve_slim_csr(
     data: &[f64],
-    indices: &[usize],
+    indices: &[u32],
     indptr: &[usize],
     n_rows: usize,
     n_cols: usize,

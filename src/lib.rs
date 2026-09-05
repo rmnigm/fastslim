@@ -32,7 +32,7 @@ fn solve_slim<'py>(
     n_threads: Option<usize>,
 ) -> PyResult<CscArrays<'py>> {
     let data: Vec<f64> = data.as_slice()?.to_vec();
-    let indices: Vec<usize> = indices.as_slice()?.iter().map(|&x| x as usize).collect();
+    let indices: Vec<u32> = indices.as_slice()?.iter().map(|&x| x as u32).collect();
     let indptr: Vec<usize> = indptr.as_slice()?.iter().map(|&x| x as usize).collect();
     let params = SlimParams {
         lambd,
