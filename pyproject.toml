@@ -1,28 +1,51 @@
 [build-system]
-requires = ["maturin>=1.7,<2.0"]
+requires = ["maturin>=1.8,<2.0"]
 build-backend = "maturin"
 
 [project]
 name = "fastslim"
-version = "0.1.3"
 description = "SLIM (Sparse Linear Methods) recommender system in Rust"
 authors = [
   { name = "Roman Nigmatullin", email = "roman.nigmatullinm@gmail.com" }
 ]
 readme = "README.md"
-requires-python = ">=3.10,<3.14"
+requires-python = ">=3.10"
+keywords = [
+    "slim",
+    "recommender-system",
+    "collaborative-filtering",
+    "item-item",
+    "sparse",
+    "rust",
+]
 classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Developers",
     "Programming Language :: Rust",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Operating System :: OS Independent",
-    "License :: OSI Approved :: MIT License",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
-license = "MIT"
+license = "Apache-2.0"
 license-files = ["LICEN[CS]E*"]
 dependencies = [
     "numpy>=1.20",
     "scipy>=1.7",
 ]
+# Single-sourced from Cargo.toml by maturin.
+dynamic = ["version"]
+
+[project.urls]
+Homepage = "https://github.com/rmnigm/fastslim"
+Repository = "https://github.com/rmnigm/fastslim"
+Issues = "https://github.com/rmnigm/fastslim/issues"
 
 [project.optional-dependencies]
 dev = [

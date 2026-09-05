@@ -1,10 +1,12 @@
 """SLIM (Sparse Linear Methods) solver, implemented in Rust."""
 
-from typing import Optional, Union
+from importlib import metadata as _metadata
+
 import numpy as np
 from scipy import sparse
 
-from ._slim_rs import solve_slim as _solve_slim, SlimResult
+from ._slim_rs import SlimResult
+from ._slim_rs import solve_slim as _solve_slim
 
 
 def fit(
@@ -12,13 +14,14 @@ def fit(
     lambd: float = 0.5,
     beta: float = 0.5,
     max_iter: int = 100,
-    n_threads: Optional[int] = None,
+    n_threads: int | None = None,
 ) -> sparse.csr_matrix:
     """
     Fit SLIM model using coordinate descent.
 
     Optimizes the following loss for each item i:
-    L_i = 0.5 * ||a_i - sum_j w_ij * a_j||^2 + lambda * sum_j |w_ij| + beta * sum_j w_ij^2
+    L_i = 0.5 * ||a_i - sum_j w_ij * a_j||^2
+          + lambda * sum_j |w_ij| + beta * sum_j w_ij^2
 
     Parameters
     ----------
@@ -69,7 +72,7 @@ def fit(
 
 def predict(
     weights: sparse.spmatrix,
-    user_history: Union[sparse.spmatrix, np.ndarray],
+    user_history: sparse.spmatrix | np.ndarray,
     *,
     exclude_seen: bool = True,
 ) -> np.ndarray:
@@ -108,4 +111,8 @@ def predict(
 
 
 __all__ = ["fit", "predict"]
-__version__ = "0.1.3"
+
+try:
+    __version__ = _metadata.version("fastslim")
+except _metadata.PackageNotFoundError:  # pragma: no cover - source tree fallback
+    __version__ = "0.0.0+unknown"
