@@ -1,18 +1,28 @@
 repos:
-- repo: https://github.com/astral-sh/ruff-pre-commit
-  rev: v0.12.10
-  hooks:
-    - id: ruff-check
-      types_or: [ python, pyi ]
-      args: [ --fix ]
-    - id: ruff-format
-      types_or: [ python, pyi ]
+  # Keep this rev in sync with the pinned `ruff` in the `dev` dependency group
+  # so pre-commit, CI and local `uv run ruff` all agree.
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.6
+    hooks:
+      - id: ruff-check
+        types_or: [python, pyi]
+        args: [--fix]
+      - id: ruff-format
+        types_or: [python, pyi]
 
-- repo: https://github.com/doublify/pre-commit-rust
-  rev: v1.0
-  hooks:
-    - id: fmt
-      args: [ -- ]
-    - id: cargo-check
-    - id: clippy
-      args: [ --, -D, warnings ]
+  # doublify/pre-commit-rust is unmaintained (last tag v1.0, 2019), so the Rust
+  # hooks run the local toolchain directly instead.
+  - repo: local
+    hooks:
+      - id: cargo-fmt
+        name: cargo fmt
+        entry: cargo fmt --all --
+        language: system
+        types: [rust]
+        pass_filenames: false
+      - id: cargo-clippy
+        name: cargo clippy
+        entry: cargo clippy -- -D warnings
+        language: system
+        types: [rust]
+        pass_filenames: false

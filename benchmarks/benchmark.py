@@ -4,25 +4,24 @@ from __future__ import annotations
 
 import time
 import tracemalloc
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Generator
-
-import numpy as np
-from scipy import sparse
-from rich.console import Console
-from rich.table import Table
-from rich.panel import Panel
-from rich.progress import (
-    Progress,
-    SpinnerColumn,
-    TextColumn,
-    BarColumn,
-    TaskProgressColumn,
-)
-from implicit.datasets.movielens import get_movielens
-from implicit.als import AlternatingLeastSquares
 
 import fastslim
+import numpy as np
+from implicit.als import AlternatingLeastSquares
+from implicit.datasets.movielens import get_movielens
+from rich.console import Console
+from rich.panel import Panel
+from rich.progress import (
+    BarColumn,
+    Progress,
+    SpinnerColumn,
+    TaskProgressColumn,
+    TextColumn,
+)
+from rich.table import Table
+from scipy import sparse
 
 
 @contextmanager
@@ -299,7 +298,8 @@ def main() -> None:
         matrix, _ = load_movielens_data("1m")
         progress.remove_task(task)
         console.print(
-            f"Dataset: {matrix.shape[0]:,} users, {matrix.shape[1]:,} items, {matrix.nnz:,} interactions"
+            f"Dataset: {matrix.shape[0]:,} users, "
+            f"{matrix.shape[1]:,} items, {matrix.nnz:,} interactions"
         )
 
         task = progress.add_task("Splitting train/test...", total=None)

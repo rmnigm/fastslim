@@ -1,9 +1,9 @@
 """Tests for SLIM recommender system."""
 
 import numpy as np
-from scipy import sparse
 from implicit.datasets.movielens import get_movielens
 from implicit.evaluation import train_test_split
+from scipy import sparse
 
 import fastslim
 

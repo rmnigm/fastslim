@@ -47,12 +47,17 @@ Homepage = "https://github.com/rmnigm/fastslim"
 Repository = "https://github.com/rmnigm/fastslim"
 Issues = "https://github.com/rmnigm/fastslim/issues"
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = [
-    "pytest>=7.0",
-    "ruff>=0.14.14",
+    "pytest>=8",
+    "ruff==0.16.6",
+    "pre-commit>=3",
+]
+bench = [
     "implicit>=0.7",
-    "h5py>=3.15.1",
+    "h5py>=3.10",
+    "rich>=13",
+    "tqdm>=4.66",
 ]
 
 [tool.maturin]
@@ -64,3 +69,13 @@ module-name = "fastslim._slim_rs"
 testpaths = ["python/fastslim"]
 python_files = "test_*.py"
 python_functions = "test_*"
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "W"]
