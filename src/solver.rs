@@ -129,6 +129,9 @@ impl Scratch {
 
 /// One coordinate-descent pass over the given local coordinates. Returns the
 /// largest absolute weight change.
+///
+/// Requires `pos.len() == gram.n` and every non-`NOT_CAND` entry of `pos` to
+/// be a valid index into `r` and `w` (maintained by [`solve_item`]).
 #[inline]
 #[allow(clippy::too_many_arguments)]
 fn cd_pass<I: Iterator<Item = usize>>(
@@ -141,6 +144,7 @@ fn cd_pass<I: Iterator<Item = usize>>(
     r: &mut [f64],
     w: &mut [f64],
 ) -> f64 {
+    debug_assert_eq!(pos.len(), gram.n);
     let mut max_delta = 0.0f64;
     for t in coords {
         let k = cand[t] as usize;
@@ -152,9 +156,15 @@ fn cd_pass<I: Iterator<Item = usize>>(
             w[t] = w_new;
             let (nb_idx, nb_val) = gram.row(k);
             for (&j, &v) in nb_idx.iter().zip(nb_val) {
-                let tj = pos[j as usize];
+                // SAFETY: every column index stored in a Gram row is
+                // < n_items == pos.len() (inputs are validated before the
+                // Gram is built), and any pos entry other than NOT_CAND was
+                // set by solve_item to a local index < m == r.len().
+                debug_assert!((j as usize) < pos.len());
+                let tj = unsafe { *pos.get_unchecked(j as usize) };
                 if tj != NOT_CAND {
-                    r[tj as usize] -= v * delta;
+                    debug_assert!((tj as usize) < r.len());
+                    unsafe { *r.get_unchecked_mut(tj as usize) -= v * delta };
                 }
             }
             r[t] -= diag_k * delta;
