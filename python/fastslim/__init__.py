@@ -4,7 +4,7 @@ from typing import Optional, Union
 import numpy as np
 from scipy import sparse
 
-from ._slim_rs import solve_slim as _solve_slim, SlimResult
+from ._slim_rs import solve_slim as _solve_slim
 
 
 def fit(
@@ -12,13 +12,14 @@ def fit(
     lambd: float = 0.5,
     beta: float = 0.5,
     max_iter: int = 100,
+    tol: float = 1e-6,
     n_threads: Optional[int] = None,
 ) -> sparse.csr_matrix:
     """
     Fit SLIM model using coordinate descent.
 
     Optimizes the following loss for each item i:
-    L_i = 0.5 * ||a_i - sum_j w_ij * a_j||^2 + lambda * sum_j |w_ij| + beta * sum_j w_ij^2
+    L_i = 0.5 * ||a_i - sum_j w_ij * a_j||^2 + lambda * sum_j |w_ij| + (beta / 2) * sum_j w_ij^2
 
     Parameters
     ----------
@@ -30,7 +31,9 @@ def fit(
     beta : float, default=0.5
         L2 regularization coefficient (controls magnitude).
     max_iter : int, default=100
-        Maximum number of coordinate descent iterations per item.
+        Maximum number of coordinate descent passes per item.
+    tol : float, default=1e-6
+        Convergence tolerance on the largest weight change in a pass.
     n_threads : int, optional
         Number of threads for parallel computation.
         If None, uses all available cores.
@@ -47,21 +50,22 @@ def fit(
     interaction_matrix = interaction_matrix.astype(np.float64)
     n_users, n_items = interaction_matrix.shape
 
-    result: SlimResult = _solve_slim(
+    indptr, indices, data = _solve_slim(
         data=interaction_matrix.data,
-        indices=interaction_matrix.indices.astype(np.int64),
-        indptr=interaction_matrix.indptr.astype(np.int64),
+        indices=interaction_matrix.indices,
+        indptr=interaction_matrix.indptr,
         n_rows=n_users,
         n_cols=n_items,
         lambd=lambd,
         beta=beta,
         max_iter=max_iter,
+        tol=tol,
         n_threads=n_threads,
     )
 
-    weight_matrix = sparse.coo_matrix(
-        (result.data, (result.rows, result.cols)),
-        shape=result.shape,
+    weight_matrix = sparse.csc_matrix(
+        (data, indices, indptr),
+        shape=(n_items, n_items),
     ).tocsr()
 
     return weight_matrix
