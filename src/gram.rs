@@ -12,9 +12,11 @@ use rayon::prelude::*;
 /// Sparse symmetric Gram matrix `P = X^T X`.
 ///
 /// Off-diagonal entries are stored row by row (CSR layout) with column
-/// indices sorted ascending. The diagonal `P_kk = sum_u x_uk^2` is kept in
-/// `diag` and never appears in a row, so row `k` never contains `k` itself.
-/// Exact zeros (from explicitly stored zeros in `X`) are not stored.
+/// indices sorted ascending. The diagonal `P_kk` is kept in `diag` and never
+/// appears in a row, so row `k` never contains `k` itself. Diagonal and
+/// off-diagonal values come from the same accumulator, so duplicate entries
+/// within a row of `X` are summed consistently. Exact zeros (from explicitly
+/// stored zeros in `X`) are not stored.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Gram {
     pub n: usize,
@@ -83,7 +85,7 @@ impl Spa {
     }
 }
 
-/// Row `k` of `P` without the diagonal, indices sorted ascending.
+/// Row `k` of `P`: `(P_kk, off-diagonal indices ascending, values)`.
 fn gram_row(
     k: usize,
     csc: &Csc,
@@ -91,7 +93,7 @@ fn gram_row(
     indices: &[u32],
     indptr: &[usize],
     spa: &mut Spa,
-) -> (Vec<u32>, Vec<f64>) {
+) -> (f64, Vec<u32>, Vec<f64>) {
     let Spa { acc, mark, touched } = spa;
     touched.clear();
     for idx in csc.col_ptr[k]..csc.col_ptr[k + 1] {
@@ -108,19 +110,22 @@ fn gram_row(
         }
     }
     touched.sort_unstable();
+    let mut diag_k = 0.0;
     let mut out_idx = Vec::with_capacity(touched.len());
     let mut out_val = Vec::with_capacity(touched.len());
     for &j in touched.iter() {
         let ju = j as usize;
         let v = acc[ju];
-        if ju != k && v != 0.0 {
+        if ju == k {
+            diag_k = v;
+        } else if v != 0.0 {
             out_idx.push(j);
             out_val.push(v);
         }
         acc[ju] = 0.0;
         mark[ju] = false;
     }
-    (out_idx, out_val)
+    (diag_k, out_idx, out_val)
 }
 
 impl Gram {
@@ -137,14 +142,9 @@ impl Gram {
         debug_assert_eq!(indptr.len(), n_rows + 1);
         debug_assert_eq!(indices.len(), data.len());
 
-        let mut diag = vec![0.0; n_cols];
-        for (&j, &v) in indices.iter().zip(data) {
-            diag[j as usize] += v * v;
-        }
-
         let csc = transpose_csr(data, indices, indptr, n_rows, n_cols);
 
-        let rows: Vec<(Vec<u32>, Vec<f64>)> = (0..n_cols)
+        let rows: Vec<(f64, Vec<u32>, Vec<f64>)> = (0..n_cols)
             .into_par_iter()
             .map_init(
                 || Spa::new(n_cols),
@@ -152,12 +152,13 @@ impl Gram {
             )
             .collect();
 
-        let nnz: usize = rows.iter().map(|(idx, _)| idx.len()).sum();
+        let nnz: usize = rows.iter().map(|(_, idx, _)| idx.len()).sum();
+        let diag: Vec<f64> = rows.iter().map(|(d, _, _)| *d).collect();
         let mut indptr_out = Vec::with_capacity(n_cols + 1);
         let mut indices_out = Vec::with_capacity(nnz);
         let mut data_out = Vec::with_capacity(nnz);
         indptr_out.push(0);
-        for (idx, val) in &rows {
+        for (_, idx, val) in &rows {
             indices_out.extend_from_slice(idx);
             data_out.extend_from_slice(val);
             indptr_out.push(indices_out.len());
@@ -177,5 +178,130 @@ impl Gram {
     pub fn row(&self, k: usize) -> (&[u32], &[f64]) {
         let (s, e) = (self.indptr[k], self.indptr[k + 1]);
         (&self.indices[s..e], &self.data[s..e])
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    // Dense helpers are written index-by-index on purpose to mirror the math.
+    #![allow(clippy::needless_range_loop)]
+
+    use super::*;
+    use crate::test_util::{csr_from_dense, random_binary};
+
+    fn dense_gram(x: &[Vec<f64>], n_cols: usize) -> Vec<Vec<f64>> {
+        let mut p = vec![vec![0.0; n_cols]; n_cols];
+        for row in x {
+            for a in 0..n_cols {
+                for b in 0..n_cols {
+                    p[a][b] += row[a] * row[b];
+                }
+            }
+        }
+        p
+    }
+
+    fn to_dense(g: &Gram) -> Vec<Vec<f64>> {
+        let mut p = vec![vec![0.0; g.n]; g.n];
+        for k in 0..g.n {
+            p[k][k] = g.diag[k];
+            let (idx, val) = g.row(k);
+            for (&j, &v) in idx.iter().zip(val) {
+                p[k][j as usize] = v;
+            }
+        }
+        p
+    }
+
+    fn assert_close(a: &[Vec<f64>], b: &[Vec<f64>]) {
+        assert_eq!(a.len(), b.len());
+        for (ra, rb) in a.iter().zip(b) {
+            for (x, y) in ra.iter().zip(rb) {
+                assert!((x - y).abs() < 1e-12, "{x} != {y}");
+            }
+        }
+    }
+
+    fn check_invariants(g: &Gram) {
+        assert_eq!(g.indptr.len(), g.n + 1);
+        assert_eq!(g.indptr[0], 0);
+        assert_eq!(*g.indptr.last().unwrap(), g.indices.len());
+        assert_eq!(g.indices.len(), g.data.len());
+        assert_eq!(g.diag.len(), g.n);
+        for k in 0..g.n {
+            assert!(g.indptr[k] <= g.indptr[k + 1]);
+            let (idx, val) = g.row(k);
+            assert!(idx.windows(2).all(|w| w[0] < w[1]), "row {k} not sorted");
+            assert!(idx.iter().all(|&j| j as usize != k), "row {k} has self");
+            assert!(val.iter().all(|&v| v != 0.0), "row {k} stores a zero");
+        }
+    }
+
+    #[test]
+    fn matches_dense_with_duplicates_and_empty_row_and_column() {
+        // 4 users x 4 items: row 0 has a duplicate column 0 (1.0 + 0.5),
+        // row 1 is empty, row 2 is unsorted, item 3 is never consumed.
+        let data = vec![1.0, 2.0, 0.5, 1.0, 1.0, 3.0];
+        let indices = vec![0u32, 1, 0, 2, 1, 0];
+        let indptr = vec![0usize, 3, 3, 5, 6];
+        let g = Gram::from_csr(&data, &indices, &indptr, 4, 4);
+        let x = vec![
+            vec![1.5, 2.0, 0.0, 0.0],
+            vec![0.0, 0.0, 0.0, 0.0],
+            vec![0.0, 1.0, 1.0, 0.0],
+            vec![3.0, 0.0, 0.0, 0.0],
+        ];
+        check_invariants(&g);
+        assert_close(&to_dense(&g), &dense_gram(&x, 4));
+        assert_eq!(g.diag, vec![11.25, 5.0, 1.0, 0.0]);
+        assert_eq!(g.row(0).0, &[1]); // P_02 == 0 is not stored
+        assert_eq!(g.row(3), (&[][..], &[][..]));
+    }
+
+    #[test]
+    fn matches_dense_random_binary() {
+        let x = random_binary(7, 30, 12, 0.3);
+        let (data, indices, indptr) = csr_from_dense(&x);
+        let g = Gram::from_csr(&data, &indices, &indptr, 30, 12);
+        check_invariants(&g);
+        assert_close(&to_dense(&g), &dense_gram(&x, 12));
+    }
+
+    #[test]
+    fn symmetric_bitwise_without_duplicates() {
+        let x = random_binary(11, 80, 20, 0.2);
+        let (data, indices, indptr) = csr_from_dense(&x);
+        let g = Gram::from_csr(&data, &indices, &indptr, 80, 20);
+        let p = to_dense(&g);
+        for a in 0..20 {
+            for b in 0..20 {
+                assert_eq!(p[a][b].to_bits(), p[b][a].to_bits());
+            }
+        }
+    }
+
+    #[test]
+    fn empty_inputs() {
+        let g = Gram::from_csr(&[], &[], &[0], 0, 3);
+        check_invariants(&g);
+        assert_eq!(g.diag, vec![0.0; 3]);
+        assert_eq!(g.indptr, vec![0; 4]);
+        let g = Gram::from_csr(&[], &[], &[0, 0], 1, 0);
+        assert_eq!(g.indptr, vec![0]);
+        assert!(g.diag.is_empty());
+    }
+
+    #[test]
+    fn deterministic_across_thread_counts() {
+        let x = random_binary(3, 200, 40, 0.1);
+        let (data, indices, indptr) = csr_from_dense(&x);
+        let build = |threads: usize| {
+            rayon::ThreadPoolBuilder::new()
+                .num_threads(threads)
+                .build()
+                .unwrap()
+                .install(|| Gram::from_csr(&data, &indices, &indptr, 200, 40))
+        };
+        assert_eq!(build(1), build(4));
     }
 }

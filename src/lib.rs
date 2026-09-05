@@ -3,6 +3,8 @@
 
 mod gram;
 mod solver;
+#[cfg(test)]
+mod test_util;
 
 use std::borrow::Cow;
 
