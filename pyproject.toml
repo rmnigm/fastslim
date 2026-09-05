@@ -53,6 +53,7 @@ dev = [
     "pytest>=8",
     "ruff==0.16.6",
     "pre-commit>=3",
+    "hypothesis>=6",
 ]
 bench = [
     "implicit>=0.7",
@@ -67,7 +68,7 @@ python-source = "python"
 module-name = "fastslim._slim_rs"
 
 [tool.pytest.ini_options]
-testpaths = ["python/fastslim"]
+testpaths = ["tests"]
 python_files = "test_*.py"
 python_functions = "test_*"
 markers = [
