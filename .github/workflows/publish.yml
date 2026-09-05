@@ -23,9 +23,7 @@ jobs:
         run: uv python install 3.13
       - name: Build
         run: |
-          cd slim-rs
           uv build --sdist
       - name: Publish
         run: |
-          cd slim-rs
           uv publish

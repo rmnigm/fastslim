@@ -12,8 +12,7 @@ repos:
   rev: v1.0
   hooks:
     - id: fmt
-      args: [ --manifest-path=slim-rs/Cargo.toml, -- ]
+      args: [ -- ]
     - id: cargo-check
-      args: [ --manifest-path=slim-rs/Cargo.toml ]
     - id: clippy
-      args: [ --manifest-path=slim-rs/Cargo.toml, --, -D, warnings ]
+      args: [ --, -D, warnings ]

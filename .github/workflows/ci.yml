@@ -11,9 +11,6 @@ env:
 jobs:
   lint-rust:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: slim-rs
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -34,9 +31,9 @@ jobs:
       - name: Set up Python
         run: uv python install
       - name: Ruff check
-        run: uvx ruff check slim-rs/python/
+        run: uvx ruff check python/
       - name: Ruff format check
-        run: uvx ruff format --check slim-rs/python/
+        run: uvx ruff format --check python/
 
   build-and-test:
     runs-on: ${{ matrix.os }}
@@ -44,9 +41,6 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
         python-version: ['3.13']
-    defaults:
-      run:
-        working-directory: slim-rs
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
