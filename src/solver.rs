@@ -1,99 +1,8 @@
 //! Per-item non-negative coordinate descent for SLIM (pure Rust, no pyo3).
 //!
-//! # Objective
-//!
-//! Let `X` be the (users x items) matrix and `x_i` its `i`-th column. For every
-//! target item `i` we solve, independently and in parallel,
-//!
-//! ```text
-//! minimise   0.5 * ||x_i - X w||^2 + lambd * sum_k |w_k| + (beta / 2) * sum_k w_k^2
-//! subject to w_k >= 0 for all k,  w_i = 0.
-//! ```
-//!
-//! This is the SLIM objective of Ning & Karypis (2011) with their `beta / 2`
-//! convention on the L2 term. With the Gram matrix `P = X^T X` the exact
-//! coordinate-wise minimiser is
-//!
-//! ```text
-//! w_k = max(0, (P_ik - sum_{j != k} w_j P_jk - lambd) / (P_kk + beta)).
-//! ```
-//!
-//! # Candidate filter (requires `X >= 0`)
-//!
-//! Only coordinates with `P_ik >= lambd` are ever considered. This is exact
-//! for non-negative data: then `P >= 0` elementwise, so the correction term
-//! `sum_{j != k} w_j P_jk` is non-negative and a coordinate with
-//! `P_ik < lambd` can never become positive. [`solve_slim_csr`] rejects
-//! negative or non-finite data for that reason.
-//!
-//! # Active set and termination
-//!
-//! Passes alternate between *full* passes over all candidates and passes over
-//! the *active set* fixed after the last full pass. Active-set passes repeat
-//! until the largest weight change in a pass is `< tol`; then a full pass
-//! runs. If that full pass also moves every coordinate by less than `tol`,
-//! the convergence check below runs at the final residuals of the pass and
-//! the item is converged if it succeeds. Otherwise the active set is rebuilt
-//! (the positive coordinates, plus any the check found wanting to enter) and
-//! the cycle repeats.
-//!
-//! ## Convergence check and guarantee
-//!
-//! A full pass with `max |delta w| < tol` on its own only bounds the KKT
-//! violation of a coordinate by `tol * sum_{j != k} P_jk`, because the
-//! coordinates updated later in the pass keep changing its residual. That is
-//! a weak bound for a popular item with many correlated neighbours. So after
-//! such a pass the solver evaluates, for every candidate `k` and without
-//! applying anything, the step the coordinate would take from the *final*
-//! residuals `r_k = P_ik - sum_j w_j P_jk`:
-//!
-//! ```text
-//! w_k > 0:  D_k = (r_k - lambd - beta * w_k) / (P_kk + beta)   (unclipped)
-//! w_k = 0:  D_k = max(0, r_k - lambd) / (P_kk + beta)          (clipped)
-//! ```
-//!
-//! and the item is converged only if `max_k |D_k| < tol` as well. (For a
-//! positive weight the unclipped step is used deliberately: a tiny `w_k`
-//! whose update clips to zero would otherwise pass with `|D_k| = w_k` while
-//! hiding an arbitrarily large gradient.) The check costs `O(m)` for `m`
-//! candidates and is part of the full pass, so it never counts towards
-//! `max_iter`. It gives the guarantee that at exit with `converged == true`
-//! every candidate `k` satisfies
-//!
-//! ```text
-//! w_k > 0:  |r_k - lambd - beta * w_k| <= (P_kk + beta) * tol
-//! w_k = 0:  r_k - lambd               <= (P_kk + beta) * tol
-//! ```
-//!
-//! i.e. its KKT violation is at most `(P_kk + beta) * tol`, up to round-off
-//! in the incrementally maintained residuals. Non-candidates
-//! (`P_ik < lambd`) satisfy their KKT condition exactly, so the bound holds
-//! for every `k != i`.
-//!
-//! ## Pass budget
-//!
-//! `max_iter` caps the total number of passes per item, and passes of *both*
-//! kinds count (active-set passes as well as full passes), so an
-//! ill-conditioned item may consume two to three times the budget that the
-//! same number of plain cyclic sweeps would. `tol = 0` disables the stopping
-//! test: every item with candidates runs exactly `max_iter` passes and is
-//! never flagged converged. When the budget runs out the current iterate is
-//! returned as-is. It is always feasible (`w >= 0`, `w_i = 0`) and no pass
-//! ever increases the objective, but it is a truncated solution whose KKT
-//! violations are not bounded. Such items are reported with
-//! `converged == false` and `n_passes == max_iter` in [`CscOutput`]; in
-//! particular `max_iter = 0` yields all-zero weights flagged unconverged for
-//! every item that has candidates. Items without candidates are trivially
-//! converged with `n_passes == 0`.
-//!
-//! # Numerical guards
-//!
-//! A Gram matrix with non-finite entries (overflow of `sum_u x_uk x_uj`) is
-//! rejected with [`SlimError::InvalidInput`] before solving; it would
-//! otherwise turn every update into `NaN` and silently yield an all-zero `W`.
-//! A coordinate with `P_kk + beta` not greater than zero (only possible for
-//! `beta = 0` when `x_uk^2` underflows) is left at `w_k = 0` instead of
-//! dividing by zero, and counts as satisfied in the convergence check.
+//! The objective, the candidate restriction, the active set, the convergence
+//! check and its KKT bound, the pass budget and the numerical guards are all
+//! derived in `docs/algorithm.md`.
 
 use crate::gram::Gram;
 use rayon::prelude::*;
@@ -106,14 +15,9 @@ pub struct SlimParams {
     pub lambd: f64,
     /// L2 penalty `beta >= 0` (objective term is `beta / 2 * ||w||^2`).
     pub beta: f64,
-    /// Maximum number of coordinate-descent passes per item. Active-set
-    /// passes and full passes both count. An item that exhausts the budget
-    /// is returned as it stands and flagged in [`CscOutput::converged`].
+    /// Maximum coordinate-descent passes per item; both kinds of pass count.
     pub max_iter: usize,
-    /// Convergence tolerance `tol >= 0` on the largest weight change in a
-    /// pass and on the would-be steps of the final check; see the module
-    /// docs for the resulting KKT bound. `tol = 0` means exactly `max_iter`
-    /// passes per item.
+    /// Convergence tolerance `tol >= 0`; `tol = 0` means exactly `max_iter` passes.
     pub tol: f64,
     /// Rayon thread count; `None` uses the global pool (all cores).
     pub n_threads: Option<usize>,
@@ -131,13 +35,8 @@ impl Default for SlimParams {
     }
 }
 
-/// Item-item weights `W` in CSC layout: for target item `i` the segment
-/// `indptr[i]..indptr[i+1]` of `indices`/`data` lists neighbours `k`
-/// (ascending, never `i` itself) and weights `w_ik > 0`, i.e.
-/// `W[k, i] = w_ik` and predictions are `scores = X @ W`.
-///
-/// `n_passes` and `converged` have one entry per item (see the module docs,
-/// "Pass budget").
+/// Item-item weights `W` in CSC layout: segment `i` lists the neighbours `k` of
+/// target item `i` (ascending) with `W[k, i] > 0`, so `scores = X @ W`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CscOutput {
     pub n_items: usize,
@@ -146,9 +45,7 @@ pub struct CscOutput {
     pub data: Vec<f64>,
     /// Coordinate-descent passes spent on each item, `<= max_iter`.
     pub n_passes: Vec<i64>,
-    /// Whether each item passed the convergence check. `false` means it was
-    /// cut off at `max_iter` (which includes `max_iter == 0`) and its
-    /// weights are a truncated solution.
+    /// Whether each item passed the convergence check; `false` means truncated.
     pub converged: Vec<bool>,
 }
 
@@ -209,11 +106,7 @@ struct ItemResult {
     converged: bool,
 }
 
-/// One coordinate-descent pass over the given local coordinates. Returns the
-/// largest absolute weight change.
-///
-/// Requires `pos.len() == gram.n` and every non-`NOT_CAND` entry of `pos` to
-/// be a valid index into `r` and `w` (maintained by [`solve_item`]).
+/// One coordinate-descent pass over `coords`, returning the largest weight change.
 #[inline]
 #[allow(clippy::too_many_arguments)]
 fn cd_pass<I: Iterator<Item = usize>>(
@@ -243,10 +136,8 @@ fn cd_pass<I: Iterator<Item = usize>>(
             w[t] = w_new;
             let (nb_idx, nb_val) = gram.row(k);
             for (&j, &v) in nb_idx.iter().zip(nb_val) {
-                // SAFETY: every column index stored in a Gram row is
-                // < n_items == pos.len() (inputs are validated before the
-                // Gram is built), and any pos entry other than NOT_CAND was
-                // set by solve_item to a local index < m == r.len().
+                // SAFETY: Gram column indices are < pos.len() and every pos
+                // entry other than NOT_CAND is a local index < r.len().
                 debug_assert!((j as usize) < pos.len());
                 let tj = unsafe { *pos.get_unchecked(j as usize) };
                 if tj != NOT_CAND {
@@ -261,10 +152,8 @@ fn cd_pass<I: Iterator<Item = usize>>(
     max_delta
 }
 
-/// Convergence check at the final residuals of a full pass (module docs,
-/// "Convergence check and guarantee"). Returns `max_k |D_k|` without
-/// applying anything, and rebuilds `active` as the coordinates that are
-/// positive or would become positive.
+/// Convergence check at the final residuals of a full pass: return `max_k |D_k|`
+/// without applying anything, and rebuild `active`.
 fn check_pass(
     gram: &Gram,
     lambd: f64,
@@ -348,8 +237,7 @@ fn solve_item(i: usize, gram: &Gram, p: &SlimParams, s: &mut Scratch) -> ItemRes
                 active.clear();
                 active.extend((0..m).filter(|&t| w[t] > 0.0).map(|t| t as u32));
             }
-            // An empty active set after a moving full pass means everything
-            // fell back to zero; let the next full pass decide.
+            // An empty active set means everything fell back to zero.
             full = active.is_empty();
         } else {
             let coords = active.iter().map(|&t| t as usize);
@@ -479,14 +367,11 @@ fn validate(
     Ok(())
 }
 
-/// Fit SLIM on a CSR user-item matrix `X` (`n_rows` users x `n_cols` items)
-/// and return the item-item weights `W` in CSC layout together with the
-/// per-item pass counts and convergence flags (see [`CscOutput`]).
+/// Fit SLIM on a CSR user-item matrix and return `W` in CSC layout with the
+/// per-item pass counts and convergence flags.
 ///
-/// `data` must be finite and non-negative; duplicate column entries within
-/// a row are summed and indices need not be sorted. Values so large that the
-/// Gram matrix `X^T X` overflows are rejected. Output is deterministic:
-/// identical inputs give byte-identical results regardless of `n_threads`.
+/// `data` must be finite and non-negative. The output is byte-identical for
+/// identical inputs regardless of `n_threads`.
 pub fn solve_slim_csr(
     data: &[f64],
     indices: &[u32],

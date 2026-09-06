@@ -192,20 +192,47 @@ Most coordinates are zero at the optimum and stay zero. Sweeping all of $C_i$ ev
 pass wastes work, but sweeping only the currently positive ones can never bring a new
 coordinate in. `solve_item` alternates:
 
-* A **full pass** sweeps every candidate `0..m`, then rebuilds the active set
-  $A = \{\, t : w_t > 0 \,\}$.
+* A **full pass** sweeps every candidate `0..m`. If it moved some coordinate by `tol`
+  or more it rebuilds the active set as $A = \{\, t : w_t > 0 \,\}$; if it moved
+  nothing that far, the convergence check below runs.
 * **Active-set passes** sweep only $A$, repeatedly, until one of them moves nothing by
   as much as `tol`. Then the next pass is a full one again.
-* The item is **converged** when a *full* pass moves no coordinate by `tol` or more.
 * If a full pass moves something but leaves $A$ empty, the next pass is full as well —
   there is nothing to iterate over otherwise.
 
-`max_iter` caps the **total** number of passes, full and active-set alike. Two edge
-cases fall out of this directly:
+### The convergence check
+
+A full pass with $\max \lvert \delta w \rvert < \texttt{tol}$ is on its own a weak
+statement: it only bounds a coordinate's KKT violation by
+$\texttt{tol} \cdot \sum_{j \ne k} P_{jk}$, because the coordinates updated later in
+the pass keep moving its residual. So after such a pass `check_pass` evaluates, for
+every candidate and **without applying anything**, the step the coordinate would take
+from the *final* residuals $r_t$ of that pass:
+
+```text
+w_k > 0:  D_k = (r_k - lambd - beta * w_k) / (P_kk + beta)   (unclipped)
+w_k = 0:  D_k = max(0, r_k - lambd) / (P_kk + beta)          (clipped)
+```
+
+The item is **converged** only when $\max_k \lvert D_k \rvert < \texttt{tol}$ as
+well; otherwise $A$ is rebuilt from the positive coordinates plus any the check found
+wanting to enter, and the cycle repeats. For a positive weight the *unclipped* step is
+used deliberately: a tiny $w_k$ whose update would clip to zero would otherwise pass
+with $\lvert D_k \rvert = w_k$ while hiding an arbitrarily large gradient. The check
+costs $O(m)$ and is part of the full pass, so it never counts towards `max_iter`.
+
+### The pass budget
+
+`max_iter` caps the **total** number of passes, full and active-set alike, so an
+ill-conditioned item can consume two to three times the budget that the same number of
+plain cyclic sweeps would. Two edge cases fall out directly:
 
 * `max_iter=0` returns an all-zero $W$: no pass ever runs.
 * `tol=0` never satisfies `max_delta < tol` (not even at `max_delta == 0.0`), so the
-  solver performs exactly `max_iter` passes for every item.
+  solver performs exactly `max_iter` passes for every item and never reports
+  convergence.
+
+An item with no candidates at all is trivially converged in zero passes.
 
 An item that runs out of `max_iter` before a full pass comes back quiet returns a
 *truncated* solution: a feasible, non-negative $W$ column that has not reached the
@@ -312,7 +339,18 @@ comes out of the *same* accumulator as the off-diagonal entries, so $P_{kk}$ can
 disagree with the rest of row $k$. (0.1.x computed the diagonal separately and got a
 nonzero $W$ diagonal on inputs with duplicate CSR entries.)
 
-## 9. Complexity and memory
+## 9. Numerical guards
+
+Two inputs would otherwise produce silent nonsense rather than an error:
+
+* **An overflowing Gram matrix.** If $\sum_u x_{uk} x_{uj}$ overflows to infinity every
+  update becomes `NaN` and $W$ comes back empty. `solve_slim_csr` checks the finished
+  Gram for non-finite entries and rejects the input with a `ValueError` instead.
+* **A coordinate with no curvature.** $P_{kk} + \beta \le 0$ is only reachable at
+  $\beta = 0$ when $x_{uk}^2$ underflows. Such a coordinate is left at $w_k = 0$ rather
+  than dividing by zero, and counts as satisfied in the convergence check.
+
+## 10. Complexity and memory
 
 Let $\text{nnz}(X)$ be the number of interactions, $|u|$ the number of items in user
 $u$'s row, and $\text{nnz}(P)$ the number of co-occurring item pairs.
@@ -333,7 +371,7 @@ The output has $\text{nnz}(W) \le \text{nnz}(P)$ and, in practice, far less: on
 MovieLens 1M with `lambd=2.0` the Gram matrix has millions of pairs while $W$ keeps
 210,095 weights.
 
-## 10. Differences from the paper
+## 11. Differences from the paper
 
 Against Ning & Karypis, *SLIM: Sparse Linear Methods for Top-N Recommender Systems*
 (ICDM 2011):

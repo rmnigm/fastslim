@@ -127,6 +127,9 @@ out-of-range hyperparameter raises `ValueError`; a hyperparameter of the wrong t
 (`max_iter=1.5`, `max_iter=True`) raises `TypeError`. The package ships type stubs and
 `py.typed`, so `W`'s layout and every signature are visible to type checkers.
 
+Every parameter, return value, exception and warning is documented in
+[`docs/api.md`](https://github.com/rmnigm/fastslim/blob/main/docs/api.md).
+
 ## Choosing hyperparameters
 
 **`lambd` — the L1 penalty, on the co-occurrence-count scale.** It is compared directly

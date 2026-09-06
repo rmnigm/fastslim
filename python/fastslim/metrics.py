@@ -1,21 +1,3 @@
-"""Top-``k`` ranking metrics.
-
-Every metric takes the model's output for a set of users and a sparse matrix of
-held-out interactions, and averages over the users that actually have held-out
-items.  Users with an empty test row carry no information about ranking quality
-and are skipped rather than scored as zero -- averaging them in would make the
-numbers depend on how many users the split happened to leave empty.
-
-The model output may be given two ways:
-
-* a **score** array of shape ``(n_users, n_items)`` with a floating dtype, as
-  returned by :func:`fastslim.predict`; the top ``k`` is taken here, or
-* a **recommendation** array of shape ``(n_users, >= k)`` with an integer dtype,
-  as returned by :func:`fastslim.recommend`, already ranked best-first.
-
-The dtype decides which reading applies.
-"""
-
 from __future__ import annotations
 
 from typing import Any
@@ -74,11 +56,10 @@ def top_k_items(predictions: Any, k: int, n_items: int | None) -> np.ndarray:
 
 
 def hits(top_k: np.ndarray, test_csr: sparse.csr_matrix) -> np.ndarray:
-    """Boolean ``(n_users, k)`` array: is ``top_k[u, j]`` held out for user ``u``?
+    """Say whether ``top_k[u, j]`` is a held-out item for user ``u``.
 
-    Row-local column indices are made globally sortable by folding the user into
-    the key (``user * n_items + item``), which turns the per-user membership test
-    into one vectorised ``searchsorted`` over the whole CSR index array.
+    Folding the user into the key (``user * n_items + item``) turns the per-user
+    membership test into one vectorised ``searchsorted``.
     """
     n_users, k = top_k.shape
     n_items = test_csr.shape[1]

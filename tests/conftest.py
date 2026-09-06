@@ -112,7 +112,7 @@ def kkt_violation(interactions: Any, weights: Any, lambd: float, beta: float) ->
 
 @pytest.fixture
 def binary_matrix() -> sparse.csr_matrix:
-    """A small binary interaction matrix used by most tests."""
+    """Build the small binary interaction matrix used by most tests."""
     return random_matrix(n_users=60, n_items=20, density=0.2, seed=1)
 
 

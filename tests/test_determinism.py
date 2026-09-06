@@ -42,7 +42,7 @@ def test_thread_count_does_not_change_the_answer(n_threads):
 
 
 def test_int32_and_int64_index_arrays_agree():
-    """scipy picks the index dtype for us, so go straight to the binding."""
+    """Scipy picks the index dtype for us, so go straight to the binding."""
     matrix = random_matrix(n_users=120, n_items=25, density=0.15, seed=8)
     from_i32 = solve(matrix, np.int32)
     from_i64 = solve(matrix, np.int64)

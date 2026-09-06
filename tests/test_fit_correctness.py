@@ -18,7 +18,7 @@ PENALTIES = [(0.0, 0.5), (0.1, 0.0), (0.5, 0.5), (1.0, 2.0), (2.0, 0.5), (3.0, 0
 
 @pytest.fixture(params=["binary", "weighted"])
 def interactions(request) -> sparse.csr_matrix:
-    """A binary and a float-valued interaction matrix of the same shape."""
+    """Build a binary and a float-valued interaction matrix of the same shape."""
     high = 5.0 if request.param == "weighted" else 0.0
     seed = 2 if request.param == "weighted" else 1
     return random_matrix(n_users=60, n_items=20, density=0.2, seed=seed, high=high)

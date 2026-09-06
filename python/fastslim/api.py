@@ -1,5 +1,3 @@
-"""Functional API: :func:`fit`, :func:`predict` and :func:`recommend`."""
-
 from __future__ import annotations
 
 import warnings
@@ -25,15 +23,10 @@ def solve(
     tol: float,
     n_threads: int | None,
 ) -> tuple[np.ndarray, ...]:
-    """Call the Rust solver on a canonical CSR matrix.
+    """Call the Rust solver, the one place that touches the extension module.
 
-    The single point of contact with the extension module.  Everything the
-    solver returns passes through here, so a change to the binding's return
-    tuple only has to be absorbed in this function and its callers.  The shape
-    of that tuple is documented in ``src/lib.rs``: it is
-    ``(indptr, indices, data, n_passes, converged)``, where the first three
-    arrays describe ``W`` in CSC layout and the last two are per-item solver
-    diagnostics (``int64`` passes used, ``bool`` converged flag).
+    Returns ``(indptr, indices, data, n_passes, converged)``, with the first
+    three describing ``W`` in CSC layout.
     """
     return solve_slim(
         data=matrix.data,
@@ -52,9 +45,7 @@ def solve(
 class ConvergenceWarning(UserWarning):
     """Some items exhausted ``max_iter`` before every weight change fell below ``tol``.
 
-    Their weights are the feasible iterate at cut-off rather than the exact
-    optimum.  Raise ``max_iter``, or raise ``beta`` to improve conditioning;
-    ``SLIM(...).fit(X).converged`` tells which items are affected.
+    Their weights are the feasible iterate at cut-off, not the exact optimum.
     """
 
 
@@ -68,9 +59,7 @@ def fit_with_diagnostics(
 ) -> tuple[Any, np.ndarray, np.ndarray]:
     """Validate, solve and assemble ``W``; shared by :func:`fit` and ``SLIM``.
 
-    Returns ``(weights, n_passes, converged)``.  Emits
-    :class:`ConvergenceWarning` when any item was truncated; ``stacklevel`` is
-    chosen so the warning points at the code that called ``fit``/``SLIM.fit``.
+    Returns ``(weights, n_passes, converged)``.
     """
     lambd, beta, max_iter, tol, n_threads = check_params(
         lambd, beta, max_iter, tol, n_threads
@@ -95,8 +84,7 @@ def fit_with_diagnostics(
             stacklevel=3,
         )
 
-    # The solver returns W column by column (one segment per target item),
-    # which is exactly CSC; converting gives canonical, sorted CSR.
+    # The solver emits W column by column, which is exactly CSC.
     csc_container = sparse.csc_array if is_sparse_array else sparse.csc_matrix
     weights = csc_container((data, indices, indptr), shape=(n_items, n_items)).tocsr()
     return weights, n_passes, converged
@@ -110,92 +98,10 @@ def fit(
     tol: float = 1e-4,
     n_threads: int | None = None,
 ) -> sparse.csr_matrix:
-    r"""Fit SLIM item-item weights with non-negative coordinate descent.
+    """Fit SLIM item-item weights with non-negative coordinate descent.
 
-    For every item :math:`i` the solver minimises
-
-    .. math::
-
-        \tfrac{1}{2} \lVert x_i - X w \rVert_2^2
-        + \lambda \sum_k w_k
-        + \tfrac{\beta}{2} \sum_k w_k^2 ,
-        \qquad w \ge 0, \; w_i = 0 ,
-
-    where :math:`X` is the user-item matrix and :math:`x_i` its :math:`i`-th
-    column.  The non-negativity constraint turns the :math:`\ell_1` term into a
-    plain linear penalty, so the problem is a non-negative elastic net and the
-    solution is unique whenever ``beta > 0``.
-
-    Parameters
-    ----------
-    interaction_matrix : sparse matrix, sparse array or array-like
-        User-item interactions, shape ``(n_users, n_items)``.  Any scipy sparse
-        format (``csr``, ``csc``, ``coo``, ``lil``, ``dok``, ...), a scipy
-        sparse array, a dense ``ndarray`` or a nested sequence is accepted and
-        converted to canonical CSR ``float64``.  Values must be finite and
-        non-negative; explicit zeros are dropped.  The input is not modified.
-    lambd : float, default=0.5
-        L1 penalty, controls sparsity.  It is compared against entries of the
-        Gram matrix :math:`P = X^\top X`: for binary data those are raw
-        co-occurrence counts, so a useful ``lambd`` scales with how often items
-        co-occur (single digits for MovieLens-sized data, not ``1e-4``).  A
-        neighbour :math:`k` of item :math:`i` can only enter the model when
-        :math:`P_{ik} \ge \lambda`, so raising ``lambd`` prunes weights outright.
-    beta : float, default=0.5
-        L2 penalty, shrinks weights towards zero without pruning them.  It also
-        regularises the per-coordinate denominator :math:`P_{kk} + \beta`, which
-        keeps very popular items from dominating and makes the solution unique.
-        On count-scale data :math:`P_{kk}` can reach the thousands while
-        ``beta`` is a fraction; raising ``beta`` improves the conditioning and
-        so the number of passes a fit needs.
-    max_iter : int, default=1000
-        Maximum number of coordinate-descent passes per item.  Full passes over
-        every candidate and passes over the active set both count towards it.
-        ``0`` returns an all-zero weight matrix.
-    tol : float, default=1e-4
-        Convergence tolerance on the largest weight change within a pass.  An
-        item is done once a full pass moves no weight by ``tol`` or more, so
-        ``tol=0`` means exactly ``max_iter`` passes.
-    n_threads : int or None, default=None
-        Worker threads.  ``None`` uses every available core.  The result is
-        bit-for-bit identical regardless of this value.
-
-    Returns
-    -------
-    scipy.sparse.csr_matrix or scipy.sparse.csr_array
-        Item-item weight matrix ``W`` of shape ``(n_items, n_items)`` with a
-        zero diagonal and strictly positive stored values, in canonical CSR
-        form.  Scores for a batch of users are ``user_history @ W``.  The
-        container mirrors the input: a scipy *sparse array* in gives a
-        ``csr_array`` out, anything else gives a ``csr_matrix``.
-
-    Raises
-    ------
-    ValueError
-        If the input is not 2-D, holds negative or non-finite values, or a
-        hyperparameter is out of range.
-    TypeError
-        If a hyperparameter has the wrong type (e.g. ``max_iter=1.5``).
-
-    Warns
-    -----
-    ConvergenceWarning
-        If some items exhausted ``max_iter`` before a full pass came back
-        under ``tol``.  Their columns of ``W`` are a truncated solution:
-        still a usable model, but not the optimum.  Raise ``max_iter``, or
-        raise ``beta`` to improve the conditioning.
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> from scipy import sparse
-    >>> import fastslim
-    >>> X = sparse.csr_matrix(np.array([[1, 1, 0], [1, 1, 1], [0, 1, 1]]))
-    >>> W = fastslim.fit(X, lambd=0.1, beta=0.1)
-    >>> W.shape
-    (3, 3)
-    >>> bool(np.all(W.diagonal() == 0))
-    True
+    Returns ``W`` of shape ``(n_items, n_items)``, sparse and non-negative with
+    a zero diagonal, in a container that mirrors the input; see `docs/api.md`.
     """
     weights, _, _ = fit_with_diagnostics(
         interaction_matrix, lambd, beta, max_iter, tol, n_threads
@@ -220,11 +126,8 @@ def as_weights(weights: Any) -> Any:
 def prepare_history(user_history: Any, n_items: int) -> tuple[Any, bool]:
     """Return ``(history, is_single_user)`` with ``history`` always 2-D.
 
-    A 1-D input -- dense or a 1-D sparse array -- describes one user, and so
-    does a sparse *matrix* of shape ``(1, n_items)``: ``spmatrix`` cannot be
-    1-D, so that is the only way to spell a single history with one.  A
-    ``csr_array`` of shape ``(1, n_items)`` stays a one-user batch, because
-    with sparse arrays 1-D is expressible.
+    A sparse *matrix* of shape ``(1, n_items)`` counts as one user because
+    ``spmatrix`` cannot be 1-D; a ``csr_array`` of that shape stays a batch.
     """
     if sparse.issparse(user_history):
         single = user_history.ndim == 1 or (
@@ -289,12 +192,10 @@ def chunks(n_rows: int, batch_size: int | None) -> Iterator[tuple[int, int]]:
 
 
 def top_k_from_scores(scores: np.ndarray, k: int) -> np.ndarray:
-    """Indices of the ``k`` highest scores per row, best first.
+    """Return the indices of the ``k`` highest scores per row, best first.
 
-    Ties among the selected items are broken by ascending item index, so the
-    ordering is reproducible.  Which items are selected when the score at the
-    ``k``-th position is tied is left to ``argpartition``; it is deterministic
-    for a given input but not necessarily index-ordered.
+    Ties among the selected items break by ascending item index; which items
+    are selected on a tie at rank ``k`` is left to ``argpartition``.
     """
     n_rows, n_items = scores.shape
     if k == 0:
@@ -317,32 +218,10 @@ def predict(
     exclude_seen: bool = True,
     batch_size: int | None = None,
 ) -> np.ndarray:
-    """Score every item for one user or a batch of users.
+    """Score every item for one user or a batch of users, as ``history @ weights``.
 
-    Scores are ``user_history @ weights``.
-
-    Parameters
-    ----------
-    weights : sparse matrix, sparse array or ndarray
-        Item-item weight matrix, shape ``(n_items, n_items)``, as returned by
-        :func:`fit`.
-    user_history : array-like or sparse
-        Either one user's interactions -- a 1-D dense vector, a 1-D sparse
-        array or a sparse *matrix* of shape ``(1, n_items)`` -- or a batch of
-        shape ``(n_users, n_items)``.
-    exclude_seen : bool, default=True
-        Replace the score of every item the user has already interacted with
-        (any nonzero history entry) by ``-inf``.
-    batch_size : int or None, default=None
-        Score this many users at a time.  Bounds the size of the intermediate
-        sparse product for large batches; the returned array is dense either
-        way.  ``None`` scores everything in one go.
-
-    Returns
-    -------
-    numpy.ndarray
-        ``float64`` scores of shape ``(n_items,)`` for a single history, or
-        ``(n_users, n_items)`` for a batch.
+    Returns ``float64`` scores of shape ``(n_items,)`` or ``(n_users, n_items)``;
+    see `docs/api.md`.
     """
     weight_matrix = as_weights(weights)
     history, single = prepare_history(user_history, weight_matrix.shape[0])
@@ -365,26 +244,8 @@ def recommend(
 ) -> np.ndarray:
     """Recommend the top ``k`` items for one user or a batch of users.
 
-    Parameters
-    ----------
-    weights : sparse matrix, sparse array or ndarray
-        Item-item weight matrix, shape ``(n_items, n_items)``.
-    user_history : array-like or sparse
-        One user's interactions or a batch; see :func:`predict`.
-    k : int, default=10
-        Number of items to return, clipped to ``n_items``.
-    exclude_seen : bool, default=True
-        Drop items the user has already interacted with.  If fewer than ``k``
-        unseen items exist, seen items fill the remaining slots.
-    batch_size : int or None, default=None
-        Recommend for this many users at a time.  Unlike :func:`predict` this
-        genuinely bounds peak memory, since only ``k`` items per user are kept.
-
-    Returns
-    -------
-    numpy.ndarray
-        ``int64`` item indices sorted by descending score, of shape ``(k,)``
-        for a single history or ``(n_users, k)`` for a batch.
+    Returns ``int64`` item ids ranked best first, of shape ``(k,)`` or
+    ``(n_users, k)``; see `docs/api.md`.
     """
     weight_matrix = as_weights(weights)
     history, single = prepare_history(user_history, weight_matrix.shape[0])

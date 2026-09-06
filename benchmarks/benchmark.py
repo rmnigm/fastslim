@@ -1,21 +1,3 @@
-"""Benchmark fastslim's SLIM solver, optionally against implicit's ALS.
-
-Examples
---------
-    python benchmarks/benchmark.py --dataset 100k
-    python benchmarks/benchmark.py --dataset 1m --baseline als --markdown
-    python benchmarks/benchmark.py --dataset synthetic --baseline none
-
-The MovieLens variants need the ``bench`` dependency group (``uv sync --group
-bench``) and download to ``~/implicit_data`` on first use.  ``synthetic`` needs
-nothing beyond fastslim itself, so the script is always runnable.
-
-Memory is reported as the growth in the process's peak resident set size across
-a model's fit.  Because ``ru_maxrss`` is a high-water mark that never falls, a
-model fitted after a hungrier one can show 0 -- the number is a floor on what
-that fit cost, not an isolated measurement.
-"""
-
 from __future__ import annotations
 
 import argparse
@@ -49,6 +31,24 @@ try:
     from implicit.evaluation import train_test_split
 except ImportError:  # pragma: no cover - the bench group is optional
     AlternatingLeastSquares = get_movielens = train_test_split = None
+
+DESCRIPTION = """Benchmark fastslim's SLIM solver, optionally against implicit's ALS.
+
+Examples
+--------
+    python benchmarks/benchmark.py --dataset 100k
+    python benchmarks/benchmark.py --dataset 1m --baseline als --markdown
+    python benchmarks/benchmark.py --dataset synthetic --baseline none
+
+The MovieLens variants need the ``bench`` dependency group (``uv sync --group
+bench``) and download to ``~/implicit_data`` on first use.  ``synthetic`` needs
+nothing beyond fastslim itself, so the script is always runnable.
+
+Memory is reported as the growth in the process's peak resident set size across
+a model's fit.  Because ``ru_maxrss`` is a high-water mark that never falls, a
+model fitted after a hungrier one can show 0 -- the number is a floor on what
+that fit cost, not an isolated measurement.
+"""
 
 # ru_maxrss is bytes on macOS and kibibytes on Linux.
 RSS_SCALE = 1.0 if sys.platform == "darwin" else 1024.0
@@ -88,6 +88,7 @@ class Reporter:
         )
 
     def log(self, message: str) -> None:
+        """Write one line to stderr."""
         if self.console is not None:
             self.console.print(message)
         else:
@@ -95,6 +96,7 @@ class Reporter:
 
     @contextmanager
     def step(self, description: str) -> Iterator[None]:
+        """Show a spinner labelled ``description`` for the duration of the block."""
         if self.console is None:
             print(f"{description}...", file=sys.stderr, flush=True)
             yield
@@ -318,7 +320,7 @@ def print_table(title: str, results: list[Result], reporter: Reporter) -> None:
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description=__doc__,
+        description=DESCRIPTION,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(

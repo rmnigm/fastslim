@@ -82,4 +82,14 @@ target-version = "py310"
 line-length = 88
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B", "W"]
+select = ["E", "F", "I", "UP", "B", "W", "D", "N", "PT"]
+ignore = [
+    "D100", # this project carries no module docstrings
+    "D104", # nor package docstrings
+    "D103", # private helpers have no underscore prefix, so ruff cannot skip them
+    "D105", # a magic method's name is its documentation
+    "D107", # __init__ is documented by its class
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"

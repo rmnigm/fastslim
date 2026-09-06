@@ -1,5 +1,4 @@
-// The dense reference solver below is written index-by-index on purpose,
-// so that it reads like the formulas in the module docs.
+// Dense helpers are written index-by-index on purpose, to mirror the maths.
 #![allow(clippy::needless_range_loop)]
 
 use super::*;
@@ -30,8 +29,7 @@ fn to_dense_w(out: &CscOutput) -> Vec<Vec<f64>> {
     w
 }
 
-/// Plain full-pass non-negative coordinate descent over all `k != i`,
-/// run to `max |delta| < 1e-14`. Returns dense `W[k][i]`.
+/// Plain full-pass non-negative coordinate descent; returns dense `W[k][i]`.
 fn reference(x: &[Vec<f64>], lambd: f64, beta: f64) -> Vec<Vec<f64>> {
     let p = dense_gram(x);
     let n = p.len();
@@ -72,10 +70,7 @@ fn reference(x: &[Vec<f64>], lambd: f64, beta: f64) -> Vec<Vec<f64>> {
     wmat
 }
 
-/// KKT violation of every coordinate `[i][k]` (`k != i`) of `W` for the
-/// objective in the module docs, computed from scratch with the dense
-/// Gram: `|r_k - lambd - beta w_k|` for `w_k > 0`, `max(0, r_k - lambd)`
-/// for `w_k = 0`.
+/// KKT violation of every coordinate of `W`, computed from the dense Gram.
 fn kkt_violations(x: &[Vec<f64>], w: &[Vec<f64>], lambd: f64, beta: f64) -> Vec<Vec<f64>> {
     let p = dense_gram(x);
     let n = p.len();
@@ -249,8 +244,7 @@ fn reports_pass_counts_and_convergence() {
         n_threads: Some(1),
     };
 
-    // Tight budget: the truncated items are flagged and report exactly
-    // max_iter passes; the output is still a well-formed feasible point.
+    // Tight budget: truncated items are flagged and report exactly max_iter.
     let cut = fit(&x, params(3));
     check_invariants(&cut);
     let n_bad = cut.converged.iter().filter(|&&c| !c).count();
@@ -263,8 +257,7 @@ fn reports_pass_counts_and_convergence() {
         }
     }
 
-    // Generous budget: everything converges within it, and items that
-    // ended up with weights needed at least one pass.
+    // Generous budget: everything converges within it.
     let ok = fit(&x, params(10_000));
     check_invariants(&ok);
     assert!(ok.converged.iter().all(|&c| c));
@@ -279,8 +272,7 @@ fn reports_pass_counts_and_convergence() {
         "budget of 3 was not binding"
     );
 
-    // tol = 0 disables the stopping test: exactly max_iter passes, never
-    // flagged converged (for items with candidates, i.e. all of them here).
+    // tol = 0 disables the stopping test: exactly max_iter passes.
     let exact = fit(
         &x,
         SlimParams {
@@ -294,17 +286,8 @@ fn reports_pass_counts_and_convergence() {
 
 #[test]
 fn converged_items_meet_kkt_bound() {
-    // At exit with converged == true every coordinate's KKT violation is
-    // at most (P_kk + beta) * tol (module docs, "Convergence check and
-    // guarantee"). Loose tolerances make the bound, not closeness to
-    // the optimum, the property under test. On the random problems a
-    // plain `max |delta w| < tol` stop already satisfies it (violations
-    // reach ~0.75 of the bound); on the near-duplicate problems, where
-    // coordinate descent crawls along `sum_k w_k` and the coordinates of
-    // a full pass all move together, that stop overshoots the bound by
-    // 1.3x-4.5x and only the final check brings it to <= 1.0. The
-    // relative slack covers round-off in the incrementally maintained
-    // residuals.
+    // A converged exit bounds every KKT violation by (P_kk + beta) * tol; the
+    // relative slack covers round-off in the maintained residuals.
     let problems = [
         random_binary(31, 60, 20, 0.3),
         random_zipf_counts(32, 400, 50),
@@ -346,8 +329,7 @@ fn converged_items_meet_kkt_bound() {
 
 #[test]
 fn rejects_gram_overflow() {
-    // 1e200^2 overflows P to +inf; without the guard every update turns
-    // into NaN and W comes back silently empty.
+    // 1e200^2 overflows P to +inf, which would turn every update into NaN.
     let (mut data, indices, indptr) = csr_from_dense(&three_items());
     for v in data.iter_mut() {
         *v = 1e200;

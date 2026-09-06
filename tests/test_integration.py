@@ -28,7 +28,7 @@ TOLERANCE = 0.01
 
 @pytest.fixture(scope="module")
 def movielens_split():
-    """An 80/20 split of binarised MovieLens 100k, as (users x items) CSR."""
+    """Split binarised MovieLens 100k 80/20, as (users x items) CSR."""
     _, ratings = movielens.get_movielens("100k")
     # get_movielens returns (items x users), and implicit feedback means
     # "rated at all", not "rated highly".

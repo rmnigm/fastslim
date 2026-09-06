@@ -1,11 +1,3 @@
-"""The :class:`SLIM` estimator.
-
-A thin, scikit-learn-flavoured wrapper around the functional API.  It follows
-the usual conventions -- constructor stores hyperparameters untouched,
-validation happens in ``fit``, learned state is set by ``fit`` -- without
-importing scikit-learn.
-"""
-
 from __future__ import annotations
 
 from typing import Any
@@ -30,74 +22,15 @@ DEFAULTS: dict[str, Any] = {
 class NotFittedError(ValueError, AttributeError):
     """Raised when a :class:`SLIM` instance is used before ``fit``.
 
-    Inherits from both :class:`ValueError` and :class:`AttributeError` so that
-    ``except ValueError`` and ``except AttributeError`` both catch it, matching
-    scikit-learn's exception of the same name.
+    Subclasses both :class:`ValueError` and :class:`AttributeError`.
     """
 
 
 class SLIM:
-    r"""SLIM item-item recommender.
+    """SLIM item-item recommender: a thin wrapper around :func:`fastslim.fit`.
 
-    Learns a sparse, non-negative item-item weight matrix ``W`` by solving, for
-    each item :math:`i`,
-
-    .. math::
-
-        \min_{w \ge 0,\, w_i = 0} \;
-        \tfrac{1}{2} \lVert x_i - X w \rVert_2^2
-        + \lambda \sum_k w_k + \tfrac{\beta}{2} \sum_k w_k^2 .
-
-    Scores for a user are then ``history @ W``.
-
-    Parameters
-    ----------
-    lambd : float, default=0.5
-        L1 penalty; larger values give sparser ``W``.  Measured on the scale of
-        the Gram matrix :math:`X^\top X`, i.e. co-occurrence counts for binary
-        data: a neighbour :math:`k` of item :math:`i` can only enter the model
-        when :math:`P_{ik} \ge \lambda`.
-    beta : float, default=0.5
-        L2 penalty; shrinks weights and makes the solution unique.  It also
-        conditions the per-coordinate denominator :math:`P_{kk} + \beta`, so
-        raising it cuts the number of passes a fit needs.
-    max_iter : int, default=1000
-        Maximum coordinate-descent passes per item; full passes and active-set
-        passes both count towards it.
-    tol : float, default=1e-4
-        Convergence tolerance on the largest weight change within a pass.  An
-        item is done once a full pass moves no weight by ``tol`` or more, so
-        ``tol=0`` means exactly ``max_iter`` passes.
-    n_threads : int or None, default=None
-        Worker threads; ``None`` uses every available core.  Results do not
-        depend on this value.
-
-    Attributes
-    ----------
-    weights : scipy.sparse.csr_matrix
-        Item-item weights, shape ``(n_items, n_items)``, available after
-        ``fit``.
-    n_items : int
-        Number of items seen during ``fit``.
-    n_passes : numpy.ndarray
-        ``int64`` array of shape ``(n_items,)``: coordinate-descent passes
-        actually used for each item (full and active-set passes both count).
-    converged : numpy.ndarray
-        ``bool`` array of shape ``(n_items,)``: whether each item reached
-        ``tol`` before running out of ``max_iter``.  Items with no candidate
-        neighbours count as converged in zero passes.
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> from scipy import sparse
-    >>> from fastslim import SLIM
-    >>> X = sparse.csr_matrix(np.array([[1, 1, 0], [1, 1, 1], [0, 1, 1]]))
-    >>> model = SLIM(lambd=0.1, beta=0.1).fit(X)
-    >>> model.n_items
-    3
-    >>> model.recommend(X[0], k=1).shape
-    (1,)
+    ``fit`` sets ``weights``, ``n_items``, ``n_passes`` and ``converged``;
+    hyperparameters and methods are documented in `docs/api.md`.
     """
 
     def __init__(
@@ -115,14 +48,7 @@ class SLIM:
         self.n_threads = n_threads
 
     def get_params(self, deep: bool = True) -> dict[str, Any]:
-        """Return the hyperparameters as a dict.
-
-        Parameters
-        ----------
-        deep : bool, default=True
-            Accepted for scikit-learn compatibility.  ``SLIM`` holds no nested
-            estimators, so it makes no difference.
-        """
+        """Return the hyperparameters as a dict; ``deep`` is accepted and ignored."""
         del deep
         return {name: getattr(self, name) for name in PARAM_NAMES}
 
@@ -137,26 +63,11 @@ class SLIM:
             setattr(self, name, value)
         return self
 
-    def fit(self, X: Any, y: Any = None) -> SLIM:
+    # X/X_history keep the scikit-learn spelling; renaming breaks callers.
+    def fit(self, X: Any, y: Any = None) -> SLIM:  # noqa: N803
         """Fit the item-item weights on a user-item interaction matrix.
 
-        Parameters
-        ----------
-        X : sparse matrix, sparse array or array-like
-            User-item interactions, shape ``(n_users, n_items)``.  Values must
-            be finite and non-negative.
-        y : ignored
-            Present for API consistency; SLIM is unsupervised.
-
-        Returns
-        -------
-        self : SLIM
-
-        Warns
-        -----
-        ConvergenceWarning
-            If some items exhausted ``max_iter`` before reaching ``tol``; see
-            :attr:`converged` for which ones.
+        Returns ``self``; ``y`` is ignored.
         """
         del y
         self.weights, self.n_passes, self.converged = api.fit_with_diagnostics(
@@ -166,6 +77,7 @@ class SLIM:
         return self
 
     def fitted_weights(self) -> sparse.csr_matrix:
+        """Return the fitted ``weights``, or raise :class:`NotFittedError`."""
         weights = getattr(self, "weights", None)
         if weights is None:
             raise NotFittedError(
@@ -176,7 +88,7 @@ class SLIM:
 
     def predict(
         self,
-        X_history: Any,
+        X_history: Any,  # noqa: N803
         *,
         exclude_seen: bool = True,
         batch_size: int | None = None,
@@ -191,7 +103,7 @@ class SLIM:
 
     def recommend(
         self,
-        X_history: Any,
+        X_history: Any,  # noqa: N803
         k: int = 10,
         *,
         exclude_seen: bool = True,
@@ -207,11 +119,7 @@ class SLIM:
         )
 
     def __repr__(self) -> str:
-        """Show only the hyperparameters that differ from the defaults.
-
-        The result is valid Python that rebuilds an equivalent (unfitted)
-        estimator, as scikit-learn's reprs are.
-        """
+        """Show only the hyperparameters that differ from the defaults."""
         changed = [
             f"{name}={getattr(self, name)!r}"
             for name in PARAM_NAMES

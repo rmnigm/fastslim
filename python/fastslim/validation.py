@@ -1,10 +1,3 @@
-"""Input and parameter validation shared by the functional API and the estimator.
-
-Everything here is private; the public entry points (:func:`fastslim.fit`,
-:class:`fastslim.SLIM`) call into it so that both surfaces reject the same
-inputs with the same messages.
-"""
-
 from __future__ import annotations
 
 import numbers
@@ -20,16 +13,14 @@ __all__ = [
     "check_params",
 ]
 
-# ``sparse.sparray`` only exists on scipy >= 1.11; ``isinstance(x, ())`` is
-# always False, which is the right answer on older versions.
+# ``sparse.sparray`` only exists on scipy >= 1.11; ``isinstance(x, ())`` is False.
 SPARRAY: Any = getattr(sparse, "sparray", ())
 
 
 def check_integer(value: Any, name: str, minimum: int) -> int:
     """Return ``value`` as an ``int``, rejecting non-integers and small values.
 
-    Booleans are rejected even though ``bool`` is a subclass of ``int``: passing
-    ``max_iter=True`` is far more likely to be a bug than a request for one pass.
+    Booleans are rejected even though ``bool`` subclasses ``int``.
     """
     if isinstance(value, bool) or not isinstance(value, numbers.Integral):
         raise TypeError(
@@ -107,18 +98,7 @@ def check_interaction_matrix(
 ) -> tuple[sparse.csr_matrix, bool]:
     """Coerce ``matrix`` to a canonical CSR float64 user-item matrix.
 
-    Accepts any scipy sparse matrix or array as well as dense ``ndarray`` and
-    array-likes.  The input is never mutated: copies are made only when a
-    conversion, a dtype change or a canonicalisation actually needs one.
-
-    Returns
-    -------
-    csr : scipy.sparse.csr_matrix or scipy.sparse.csr_array
-        Canonical CSR (sorted indices, no duplicates, no explicit zeros) with
-        ``float64`` data.
-    is_sparse_array : bool
-        Whether the input was a scipy *sparse array* (as opposed to a sparse
-        matrix or a dense input).  Callers use this to mirror the input type.
+    Returns ``(csr, is_sparse_array)``; the caller's arrays are never mutated.
     """
     is_sparse_array = isinstance(matrix, SPARRAY)
 
@@ -147,8 +127,7 @@ def check_interaction_matrix(
     check_values(csr, name)
 
     if not csr.has_canonical_format:
-        # ``sum_duplicates`` sorts as a side effect, so this covers both
-        # unsorted indices and repeated entries.
+        # ``sum_duplicates`` sorts too, so this covers unsorted indices as well.
         if not owned:
             csr, owned = csr.copy(), True
         csr.sum_duplicates()

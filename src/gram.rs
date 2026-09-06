@@ -1,22 +1,12 @@
 //! Gram matrix `P = X^T X` of the user-item matrix `X`, in sparse form.
 //!
-//! `X` arrives as CSR (users x items). We build a CSC view (items -> users)
-//! and then, independently for every item `k`, accumulate row `k` of `P` with
-//! a dense sparse-accumulator: for each user `u` who consumed `k`, walk row
-//! `u` and add `x_uk * x_uj` into `acc[j]`. Every row of `P` is therefore
-//! produced by a fixed sequential summation order, so the result is
-//! bit-identical regardless of thread count or scheduling.
+//! The fixed-order sparse accumulation that makes this deterministic is
+//! described in `docs/algorithm.md`.
 
 use rayon::prelude::*;
 
-/// Sparse symmetric Gram matrix `P = X^T X`.
-///
-/// Off-diagonal entries are stored row by row (CSR layout) with column
-/// indices sorted ascending. The diagonal `P_kk` is kept in `diag` and never
-/// appears in a row, so row `k` never contains `k` itself. Diagonal and
-/// off-diagonal values come from the same accumulator, so duplicate entries
-/// within a row of `X` are summed consistently. Exact zeros (from explicitly
-/// stored zeros in `X`) are not stored.
+/// Sparse symmetric Gram matrix `P = X^T X`: off-diagonals row by row in CSR
+/// with ascending indices and no stored zeros, the diagonal split into `diag`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Gram {
     pub n: usize,
@@ -129,9 +119,8 @@ fn gram_row(
 }
 
 impl Gram {
-    /// Build `P = X^T X` from a validated CSR matrix (`indices` in
-    /// `[0, n_cols)`, `indptr` monotone with `indptr[n_rows] == data.len()`).
-    /// Duplicate column entries within a row are summed like scipy does.
+    /// Build `P = X^T X` from a validated CSR matrix, summing duplicate column
+    /// entries within a row the way scipy does.
     pub fn from_csr(
         data: &[f64],
         indices: &[u32],

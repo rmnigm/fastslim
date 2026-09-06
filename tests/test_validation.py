@@ -80,7 +80,7 @@ def test_bad_hyperparameters(kwargs, exc, message):
     ],
 )
 def test_estimator_validates_at_fit_time(kwargs, exc, message):
-    """sklearn convention: the constructor stores, ``fit`` checks."""
+    """Follow the sklearn convention: the constructor stores, ``fit`` checks."""
     name, value = next(iter(kwargs.items()))
     model = SLIM(**kwargs)
     assert model.get_params()[name] == value

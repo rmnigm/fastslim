@@ -64,25 +64,8 @@ where
 
 /// Fit SLIM item-item weights on a CSR user-item matrix.
 ///
-/// `data`, `indices`, `indptr` are the CSR arrays of the (n_rows x n_cols)
-/// user-item matrix; `data` must be float64, finite and non-negative;
-/// `indices`/`indptr` may be int32 or int64. Returns the 5-tuple
-/// `(indptr, indices, data, n_passes, converged)`:
-///
-/// * `indptr` (int64, n_cols + 1), `indices` (int64, nnz), `data` (float64,
-///   nnz): the item-item weight matrix `W` in CSC layout, where
-///   `indices[indptr[i]:indptr[i+1]]` are the neighbours `k` of target item
-///   `i` (ascending) with weights `W[k, i] > 0`, so that `scores = X @ W`.
-/// * `n_passes` (int64, n_cols): coordinate-descent passes spent on each
-///   item (active-set and full passes both count, `<= max_iter`).
-/// * `converged` (bool, n_cols): whether each item met `tol`, which
-///   guarantees a per-coordinate KKT violation of at most
-///   `(P_kk + beta) * tol`. `False` means the item was cut off at `max_iter`
-///   (always the case for `max_iter = 0` or `tol = 0`) and its weights are a
-///   truncated, though feasible, solution.
-///
-/// Raises `ValueError` on malformed input, out-of-range parameters, or
-/// interaction values so large that the Gram matrix `X^T X` overflows.
+/// Returns `(indptr, indices, data, n_passes, converged)`, documented in
+/// `docs/api.md`. Raises `ValueError` on malformed or out-of-range input.
 #[pyfunction]
 #[pyo3(signature = (data, indices, indptr, n_rows, n_cols, lambd=0.5, beta=0.5, max_iter=1000, tol=1e-4, n_threads=None))]
 #[allow(clippy::too_many_arguments)]

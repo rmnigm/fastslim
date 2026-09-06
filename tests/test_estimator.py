@@ -12,7 +12,7 @@ PARAMS = {"lambd": 0.3, "beta": 0.3, "max_iter": 200, "tol": 1e-9}
 
 @pytest.fixture
 def model(tiny_matrix) -> SLIM:
-    """A ``SLIM`` fitted on ``tiny_matrix`` with ``PARAMS``."""
+    """Fit a ``SLIM`` on ``tiny_matrix`` with ``PARAMS``."""
     return SLIM(**PARAMS).fit(tiny_matrix)
 
 
