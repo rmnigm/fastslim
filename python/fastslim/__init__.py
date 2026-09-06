@@ -1,11 +1,19 @@
 """SLIM (Sparse Linear Methods) solver, implemented in Rust."""
 
+import warnings
 from importlib import metadata as _metadata
 
 import numpy as np
 from scipy import sparse
 
 from ._slim_rs import solve_slim as _solve_slim
+
+
+class ConvergenceWarning(UserWarning):
+    """Some items hit ``max_iter`` before meeting ``tol``.
+
+    Their weights are the (feasible) iterate at cut-off, not the optimum.
+    """
 
 
 def fit(
@@ -52,7 +60,7 @@ def fit(
     interaction_matrix = interaction_matrix.astype(np.float64)
     n_users, n_items = interaction_matrix.shape
 
-    indptr, indices, data = _solve_slim(
+    indptr, indices, data, _n_passes, converged = _solve_slim(
         data=interaction_matrix.data,
         indices=interaction_matrix.indices,
         indptr=interaction_matrix.indptr,
@@ -64,6 +72,17 @@ def fit(
         tol=tol,
         n_threads=n_threads,
     )
+
+    if not converged.all():
+        n_bad = int(np.count_nonzero(~converged))
+        warnings.warn(
+            f"{n_bad} of {n_items} items did not converge within "
+            f"max_iter={max_iter} passes (tol={tol}); the returned weights are "
+            "a truncated solution. Increase max_iter, or increase beta to "
+            "improve conditioning.",
+            ConvergenceWarning,
+            stacklevel=2,
+        )
 
     weight_matrix = sparse.csc_matrix(
         (data, indices, indptr),
@@ -113,7 +132,7 @@ def predict(
     return scores
 
 
-__all__ = ["fit", "predict"]
+__all__ = ["ConvergenceWarning", "fit", "predict"]
 
 try:
     __version__ = _metadata.version("fastslim")
