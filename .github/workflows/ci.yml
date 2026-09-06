@@ -36,7 +36,7 @@ jobs:
       # `cargo test` builds a test binary that links against libpython (the
       # `extension-module` pyo3 feature is off by default for exactly this
       # reason), so an interpreter with a shared library must be available.
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Point pyo3 at the interpreter
