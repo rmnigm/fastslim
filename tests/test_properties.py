@@ -36,7 +36,7 @@ penalties = st.floats(min_value=0.0, max_value=3.0, allow_nan=False)
 @SETTINGS
 @given(dense=matrices, lambd=penalties, beta=penalties)
 def test_structural_invariants(dense, lambd, beta):
-    W = fastslim.fit(sparse.csr_matrix(dense), lambd=lambd, beta=beta)
+    W = fastslim.fit(sparse.csr_matrix(dense), lambd=lambd, beta=beta, max_iter=5000)
 
     assert W.shape == (dense.shape[1], dense.shape[1])
     assert np.all(W.data > 0), "only strictly positive weights are stored"
@@ -56,7 +56,7 @@ def test_solution_is_optimal(dense, lambd, beta):
 @SETTINGS
 @given(dense=matrices)
 def test_scores_and_ranking_agree(dense):
-    W = fastslim.fit(sparse.csr_matrix(dense), lambd=0.3, beta=0.3)
+    W = fastslim.fit(sparse.csr_matrix(dense), lambd=0.3, beta=0.3, max_iter=5000)
     n_items = dense.shape[1]
     if n_items == 0 or dense.shape[0] == 0:
         return

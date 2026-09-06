@@ -109,7 +109,8 @@ def test_huge_lambd_prunes_everything(binary_matrix):
 
 
 def test_max_iter_zero_gives_empty_weights(binary_matrix):
-    W = fastslim.fit(binary_matrix, lambd=0.1, beta=0.1, max_iter=0)
+    with pytest.warns(fastslim.ConvergenceWarning, match="max_iter=0"):
+        W = fastslim.fit(binary_matrix, lambd=0.1, beta=0.1, max_iter=0)
     assert W.nnz == 0
 
 

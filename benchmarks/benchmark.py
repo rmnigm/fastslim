@@ -21,6 +21,7 @@ from __future__ import annotations
 import argparse
 import sys
 import time
+import warnings
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -64,6 +65,7 @@ class Result:
     rss_growth_mb: float
     model_size: str
     scores: dict[str, float] = field(default_factory=dict)
+    extra: dict[str, str] = field(default_factory=dict)
 
 
 class Reporter:
@@ -188,25 +190,33 @@ def run_slim(
     args: argparse.Namespace,
     reporter: Reporter,
 ) -> Result:
-    with reporter.step("Fitting SLIM"), timed() as timing:
-        weights = fastslim.fit(
-            train,
-            lambd=args.lambd,
-            beta=args.beta,
-            max_iter=args.max_iter,
-            tol=args.tol,
-            n_threads=args.threads,
-        )
+    model = fastslim.SLIM(
+        lambd=args.lambd,
+        beta=args.beta,
+        max_iter=args.max_iter,
+        tol=args.tol,
+        n_threads=args.threads,
+    )
+    with reporter.step("Fitting SLIM"), timed() as timing, warnings.catch_warnings():
+        # Truncation is reported as a table row instead of a warning.
+        warnings.simplefilter("ignore", fastslim.ConvergenceWarning)
+        model.fit(train)
+    weights = model.weights_
 
     with reporter.step("Scoring SLIM"):
         top = fastslim.recommend(weights, train, k=args.k, batch_size=SCORING_BATCH)
 
+    n_unconverged = int(np.count_nonzero(~model.converged_))
     return Result(
         name="fastslim SLIM",
         fit_seconds=timing["seconds"],
         rss_growth_mb=timing["rss_growth_mb"],
         model_size=f"{weights.nnz:,} nonzeros",
         scores=score_all(top, test, args.k),
+        extra={
+            "Items hitting max_iter": f"{n_unconverged:,} / {model.n_items_:,}",
+            "Median passes per item": f"{np.median(model.n_passes_):.0f}",
+        },
     )
 
 
@@ -261,6 +271,9 @@ def build_rows(results: list[Result]) -> tuple[list[str], list[list[str]]]:
     ]
     for name in results[0].scores:
         rows.append([name, *(f"{r.scores[name]:.4f}" for r in results)])
+    extra_names = [name for r in results for name in r.extra]
+    for name in dict.fromkeys(extra_names):
+        rows.append([name, *(r.extra.get(name, "-") for r in results)])
     return header, rows
 
 

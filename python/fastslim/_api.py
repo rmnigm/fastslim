@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import Iterator
 from typing import Any
 
@@ -11,7 +12,7 @@ from scipy import sparse
 from ._slim_rs import solve_slim as _solve_slim
 from ._validation import check_integer, check_interaction_matrix, check_params
 
-__all__ = ["fit", "predict", "recommend"]
+__all__ = ["ConvergenceWarning", "fit", "predict", "recommend"]
 
 _SPARRAY: Any = getattr(sparse, "sparray", ())
 
@@ -29,8 +30,10 @@ def _solve(
     The single point of contact with the extension module.  Everything the
     solver returns passes through here, so a change to the binding's return
     tuple only has to be absorbed in this function and its callers.  The shape
-    of that tuple is documented in ``src/lib.rs``; today it is
-    ``(indptr, indices, data)`` describing ``W`` in CSC layout.
+    of that tuple is documented in ``src/lib.rs``: it is
+    ``(indptr, indices, data, n_passes, converged)``, where the first three
+    arrays describe ``W`` in CSC layout and the last two are per-item solver
+    diagnostics (``int64`` passes used, ``bool`` converged flag).
     """
     return _solve_slim(
         data=matrix.data,
@@ -44,6 +47,59 @@ def _solve(
         tol=tol,
         n_threads=n_threads,
     )
+
+
+class ConvergenceWarning(UserWarning):
+    """Some items exhausted ``max_iter`` before every weight change fell below ``tol``.
+
+    Their weights are the feasible iterate at cut-off rather than the exact
+    optimum.  Raise ``max_iter``, or raise ``beta`` to improve conditioning;
+    ``SLIM(...).fit(X).converged_`` tells which items are affected.
+    """
+
+
+def _fit_impl(
+    interaction_matrix: Any,
+    lambd: float,
+    beta: float,
+    max_iter: int,
+    tol: float,
+    n_threads: int | None,
+) -> tuple[Any, np.ndarray, np.ndarray]:
+    """Validate, solve and assemble ``W``; shared by :func:`fit` and ``SLIM``.
+
+    Returns ``(weights, n_passes, converged)``.  Emits
+    :class:`ConvergenceWarning` when any item was truncated; ``stacklevel`` is
+    chosen so the warning points at the code that called ``fit``/``SLIM.fit``.
+    """
+    lambd, beta, max_iter, tol, n_threads = check_params(
+        lambd, beta, max_iter, tol, n_threads
+    )
+    matrix, is_sparse_array = check_interaction_matrix(interaction_matrix)
+    n_items = matrix.shape[1]
+
+    indptr, indices, data, n_passes, converged = _solve(
+        matrix, lambd, beta, max_iter, tol, n_threads
+    )
+
+    if not converged.all():
+        n_bad = int(np.count_nonzero(~converged))
+        warnings.warn(
+            f"{n_bad} of {n_items} items did not converge within "
+            f"max_iter={max_iter} passes (tol={tol}); the returned weights are "
+            "a truncated solution. Increase max_iter, or increase beta to "
+            "improve conditioning. SLIM(...).fit(X).converged_ reports which "
+            "items are affected; silence this with "
+            "warnings.filterwarnings('ignore', category=fastslim.ConvergenceWarning).",
+            ConvergenceWarning,
+            stacklevel=3,
+        )
+
+    # The solver returns W column by column (one segment per target item),
+    # which is exactly CSC; converting gives canonical, sorted CSR.
+    csc_container = sparse.csc_array if is_sparse_array else sparse.csc_matrix
+    weights = csc_container((data, indices, indptr), shape=(n_items, n_items)).tocsr()
+    return weights, n_passes, converged
 
 
 def fit(
@@ -141,18 +197,8 @@ def fit(
     >>> bool(np.all(W.diagonal() == 0))
     True
     """
-    lambd, beta, max_iter, tol, n_threads = check_params(
-        lambd, beta, max_iter, tol, n_threads
-    )
-    matrix, is_sparse_array = check_interaction_matrix(interaction_matrix)
-    n_items = matrix.shape[1]
-
-    indptr, indices, data = _solve(matrix, lambd, beta, max_iter, tol, n_threads)
-
-    # The solver returns W column by column (one segment per target item),
-    # which is exactly CSC; converting gives canonical, sorted CSR.
-    csc_container = sparse.csc_array if is_sparse_array else sparse.csc_matrix
-    return csc_container((data, indices, indptr), shape=(n_items, n_items)).tocsr()
+    weights, _, _ = _fit_impl(interaction_matrix, lambd, beta, max_iter, tol, n_threads)
+    return weights
 
 
 def _as_weights(weights: Any) -> Any:

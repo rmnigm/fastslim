@@ -16,7 +16,13 @@ def solve_slim(
     max_iter: int = ...,
     tol: float = ...,
     n_threads: int | None = ...,
-) -> tuple[npt.NDArray[np.int64], npt.NDArray[np.int64], npt.NDArray[np.float64]]:
+) -> tuple[
+    npt.NDArray[np.int64],
+    npt.NDArray[np.int64],
+    npt.NDArray[np.float64],
+    npt.NDArray[np.int64],
+    npt.NDArray[np.bool_],
+]:
     r"""Fit SLIM item-item weights on a CSR user-item matrix.
 
     Solves, independently for each item ``i``,
@@ -49,11 +55,15 @@ def solve_slim(
 
     Returns
     -------
-    tuple of (indptr, indices, data)
-        The item-item weight matrix ``W`` in **CSC** layout: segment ``i``,
-        namely ``indices[indptr[i]:indptr[i + 1]]``, holds the neighbours ``k``
-        of target item ``i`` in ascending order, with strictly positive weights
-        ``W[k, i]``.  Hence ``scores = X @ W``.
+    tuple of (indptr, indices, data, n_passes, converged)
+        The first three arrays are the item-item weight matrix ``W`` in **CSC**
+        layout: segment ``i``, namely ``indices[indptr[i]:indptr[i + 1]]``,
+        holds the neighbours ``k`` of target item ``i`` in ascending order,
+        with strictly positive weights ``W[k, i]``.  Hence ``scores = X @ W``.
+        ``n_passes`` (``int64``, one entry per item) counts the passes used and
+        ``converged`` (``bool``) tells whether the item met ``tol`` within
+        ``max_iter``; a converged item satisfies the KKT conditions to within
+        ``(P_kk + beta) * tol`` per coordinate.
 
         ``src/lib.rs`` is the authority on this tuple; the members listed here
         mirror it and must be updated alongside it.

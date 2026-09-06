@@ -18,7 +18,13 @@ pytest.importorskip("implicit", reason="install the 'bench' group for this test"
 from implicit.datasets.movielens import get_movielens  # noqa: E402
 from implicit.evaluation import train_test_split  # noqa: E402
 
-pytestmark = pytest.mark.slow
+# ``max_iter=50`` deliberately truncates the ill-conditioned popular items (it
+# is the setting the benchmark uses); the metrics below are what is guarded,
+# so the ConvergenceWarning that truncation raises is expected here.
+pytestmark = [
+    pytest.mark.slow,
+    pytest.mark.filterwarnings("ignore::fastslim.ConvergenceWarning"),
+]
 
 K = 10
 FIT_PARAMS = {"lambd": 2.0, "beta": 2.0, "max_iter": 50}

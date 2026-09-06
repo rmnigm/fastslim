@@ -12,11 +12,12 @@ array([2])
 from importlib import metadata as _metadata
 
 from . import metrics
-from ._api import fit, predict, recommend
+from ._api import ConvergenceWarning, fit, predict, recommend
 from .estimator import SLIM, NotFittedError
 
 __all__ = [
     "SLIM",
+    "ConvergenceWarning",
     "NotFittedError",
     "__version__",
     "fit",

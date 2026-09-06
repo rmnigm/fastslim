@@ -55,7 +55,7 @@ def test_int32_and_int64_index_arrays_agree(make_binary):
 def test_solver_returns_the_documented_csc_layout(make_binary):
     """Segment ``i`` of the output holds the neighbours of target item ``i``."""
     X = make_binary(n_users=120, n_items=25, density=0.15, seed=8)
-    indptr, indices, data = _slim_rs.solve_slim(
+    indptr, indices, data, n_passes, converged = _slim_rs.solve_slim(
         data=X.data,
         indices=X.indices,
         indptr=X.indptr,
@@ -67,6 +67,11 @@ def test_solver_returns_the_documented_csc_layout(make_binary):
     assert indptr.dtype == np.int64
     assert indices.dtype == np.int64
     assert data.dtype == np.float64
+    assert n_passes.dtype == np.int64
+    assert converged.dtype == np.bool_
+    assert n_passes.shape == converged.shape == (X.shape[1],)
+    assert converged.all()
+    assert np.all(n_passes <= PARAMS["max_iter"])
     assert indptr.shape == (X.shape[1] + 1,)
     assert indptr[0] == 0 and indptr[-1] == data.size
     assert np.all(data > 0)

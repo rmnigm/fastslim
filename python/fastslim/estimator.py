@@ -79,13 +79,13 @@ class SLIM:
         ``fit``.
     n_items_ : int
         Number of items seen during ``fit``.
-    n_passes_ : numpy.ndarray or None
+    n_passes_ : numpy.ndarray
         ``int64`` array of shape ``(n_items,)``: coordinate-descent passes
-        actually used for each item.  ``None`` until the solver reports it.
-    converged_ : numpy.ndarray or None
+        actually used for each item (full and active-set passes both count).
+    converged_ : numpy.ndarray
         ``bool`` array of shape ``(n_items,)``: whether each item reached
-        ``tol`` before running out of ``max_iter``.  ``None`` until the solver
-        reports it.
+        ``tol`` before running out of ``max_iter``.  Items with no candidate
+        neighbours count as converged in zero passes.
 
     Examples
     --------
@@ -159,20 +159,10 @@ class SLIM:
             :attr:`converged_` for which ones.
         """
         del y
-        self.weights_ = _api.fit(
-            X,
-            lambd=self.lambd,
-            beta=self.beta,
-            max_iter=self.max_iter,
-            tol=self.tol,
-            n_threads=self.n_threads,
+        self.weights_, self.n_passes_, self.converged_ = _api._fit_impl(
+            X, self.lambd, self.beta, self.max_iter, self.tol, self.n_threads
         )
         self.n_items_ = int(self.weights_.shape[0])
-        # Placeholders for per-item solver diagnostics.  The extension does not
-        # report them yet; when it does, populate them here from what
-        # ``_api.fit`` passes back rather than adding new attributes.
-        self.n_passes_ = None
-        self.converged_ = None
         return self
 
     def _weights(self) -> sparse.csr_matrix:

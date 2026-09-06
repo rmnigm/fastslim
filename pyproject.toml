@@ -74,6 +74,8 @@ python_functions = "test_*"
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
 ]
+# A truncated fit in a test is a bug unless the test says otherwise.
+filterwarnings = ["error::fastslim.ConvergenceWarning"]
 
 [tool.ruff]
 target-version = "py310"
