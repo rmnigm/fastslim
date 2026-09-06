@@ -4,7 +4,7 @@
 mod gram;
 mod solver;
 #[cfg(test)]
-mod test_util;
+mod testing;
 
 use std::borrow::Cow;
 

@@ -32,7 +32,8 @@ uv sync --group bench   # implicit, h5py, rich, tqdm on top of the dev group
 | `src/gram.rs` | Builds the Gram matrix `P = X.T @ X` by sparse accumulation. Deterministic by construction; see §8 of the algorithm doc |
 | `src/solver.rs` | Per-item non-negative coordinate descent: candidate selection, residual maintenance, active set, `solve_slim_csr`. Pure Rust, no pyo3 |
 | `src/lib.rs` | The pyo3 bindings. Validates and converts, then calls `solve_slim_csr`; no numerics |
-| `src/test_util.rs` | Test-only helpers (`csr_from_dense`, `random_binary`) |
+| `src/testing.rs` | Test-only helpers (`csr_from_dense`, `random_binary`) |
+| `src/gram/tests.rs`, `src/solver/tests.rs` | The Rust unit tests for the module next to them |
 | `python/fastslim/_api.py` | `fit`, `predict`, `recommend` and the single call site of the extension (`_solve`) |
 | `python/fastslim/_validation.py` | Input and hyperparameter checks shared by the functional API and the estimator |
 | `python/fastslim/estimator.py` | The `SLIM` class and `NotFittedError` |
