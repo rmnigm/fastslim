@@ -2,6 +2,11 @@ name: Publish
 
 on:
   workflow_dispatch:
+    inputs:
+      publish:
+        description: "Upload to PyPI (otherwise only build and smoke-test the wheels)"
+        type: boolean
+        default: false
   push:
     tags:
       - "v*"
@@ -29,8 +34,8 @@ jobs:
           - runner: ubuntu-24.04-arm
             target: aarch64
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.10"
       - name: Build wheel
@@ -52,7 +57,7 @@ jobs:
           "$PY" -m pip install --upgrade pip
           "$PY" -m pip install dist/*.whl
           "$PY" -c "import fastslim, numpy, scipy; print(fastslim.__version__)"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: wheel-linux-${{ matrix.target }}
           path: dist/*.whl
@@ -65,8 +70,8 @@ jobs:
     # arm64 and Intel Macs, which avoids depending on the deprecated Intel
     # runner images (macos-13) for a separate x86_64 build.
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.10"
       - name: Build wheel
@@ -85,7 +90,7 @@ jobs:
           "$PY" -m pip install --upgrade pip
           "$PY" -m pip install dist/*.whl
           "$PY" -c "import fastslim, numpy, scipy; print(fastslim.__version__)"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: wheel-macos-universal2
           path: dist/*.whl
@@ -95,8 +100,8 @@ jobs:
     name: Wheel (windows-x64)
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.10"
           architecture: x64
@@ -116,7 +121,7 @@ jobs:
           "$PY" -m pip install --upgrade pip
           "$PY" -m pip install dist/*.whl
           "$PY" -c "import fastslim, numpy, scipy; print(fastslim.__version__)"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: wheel-windows-x64
           path: dist/*.whl
@@ -126,13 +131,13 @@ jobs:
     name: Source distribution
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Build sdist
         uses: PyO3/maturin-action@v1
         with:
           command: sdist
           args: --out dist
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: sdist
           path: dist/*.tar.gz
@@ -142,6 +147,8 @@ jobs:
     name: Publish to PyPI
     runs-on: ubuntu-latest
     needs: [linux, macos, windows, sdist]
+    # Tags always publish; manual runs only when asked, so the build can be exercised safely.
+    if: github.event_name == 'push' || inputs.publish
     permissions:
       # Required for PyPI trusted publishing (OIDC).
       id-token: write
@@ -150,7 +157,7 @@ jobs:
     # environment: pypi
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
