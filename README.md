@@ -12,9 +12,9 @@ of the strongest top-N recommenders that stays fully interpretable — every
 recommendation decomposes into "because you interacted with these items". `fastslim`
 implements it in Rust: the solver is **exact** (it satisfies the KKT conditions of the
 problem it documents, checked against an independent reference solver),
-**deterministic** (bit-identical output for any thread count), **fast** (seconds where
-0.1.x took minutes), and wrapped in a **tiny Python API** — `fit`, `predict`,
-`recommend`, plus a scikit-learn-style estimator and three ranking metrics.
+**deterministic** (bit-identical output for any thread count) and **fast** (a MovieLens
+1M fit in seconds), behind a **tiny Python API** — `fit`, `predict`, `recommend`, plus a
+scikit-learn-style estimator and three ranking metrics.
 
 ## Install
 
@@ -180,22 +180,7 @@ clock and nothing else.
 
 ## Performance
 
-### 0.1.x to 0.2.0
-
-12 threads on Apple Silicon, median of 3 runs.
-
-| Workload | Fit time 0.1.x | Fit time 0.2.0 | Peak RSS 0.1.x | Peak RSS 0.2.0 |
-| --- | --- | --- | --- | --- |
-| Synthetic 20,000 x 3,000, 1% density, `max_iter=20` | 65.3 s | 7.0 s | 1455 MiB | 757 MiB |
-| MovieLens 1M (6,041 x 3,953, 1.0M nnz), `max_iter=15` | 25.6 s | 0.85 s | 3902 MiB | 400 MiB |
-
-Single-threaded 0.2.0 on the synthetic problem takes 51.6 s, so most of the gain is
-algorithmic (sparse Gram accumulation, residual maintenance, a correct active set)
-rather than parallelism.
-
-### Against implicit's ALS
-
-Produced by
+Against implicit's ALS, produced by
 [`benchmarks/benchmark.py`](https://github.com/rmnigm/fastslim/blob/main/benchmarks/benchmark.py),
 an 80/20 split at `seed=42`, `k=10`:
 
@@ -256,15 +241,15 @@ alternates active-set passes with full verification passes. Column `i` of the re
 solved by one thread from start to finish, which is why the answer does not depend on
 how many threads there are.
 
-The full derivation — including why the candidate restriction is exact, the KKT bound
-the stopping rule guarantees, and where this differs from the original paper — is in
+The full derivation — why the candidate restriction is exact, the KKT bound the
+stopping rule guarantees, and how this relates to the original paper — is in
 [`docs/algorithm.md`](https://github.com/rmnigm/fastslim/blob/main/docs/algorithm.md).
 
 ## Development
 
 ```bash
 uv sync                        # dev group; builds the extension
-uv run pytest -q -m "not slow" # 180 fast Python tests, a few seconds
+uv run pytest -q -m "not slow" # 210 fast Python tests, a few seconds
 cargo test                     # Rust unit tests
 ```
 

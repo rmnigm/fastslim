@@ -1,9 +1,9 @@
 # Contributing to fastslim
 
-Thanks for looking. `fastslim` is a small project: a Rust solver behind a thin Python
-API, with the correctness argument written down in
-[`docs/algorithm.md`](docs/algorithm.md). Changes that alter the numbers the solver
-returns should say why in those terms.
+`fastslim` is a Rust solver behind a thin Python API, with the correctness argument
+written down in [`docs/algorithm.md`](docs/algorithm.md) and the public surface in
+[`docs/api.md`](docs/api.md). Changes that alter the numbers the solver returns should
+say why in those terms.
 
 ## Setup
 
@@ -40,6 +40,7 @@ uv sync --group bench   # implicit, h5py, rich, tqdm on top of the dev group
 | `python/fastslim/metrics.py` | `precision_at_k`, `recall_at_k`, `ndcg_at_k` |
 | `python/fastslim/native.pyi` | Stubs for the compiled module — keep in sync with `src/lib.rs` |
 | `tests/` | The Python suite, plus `conftest.py` with a reference solver and a KKT checker |
+| `docs/algorithm.md`, `docs/api.md` | The correctness argument and the public API reference |
 | `benchmarks/benchmark.py` | The benchmark CLI |
 
 Keep the numerics in `gram.rs` and `solver.rs` and the conversions in `lib.rs`. On the
@@ -49,9 +50,9 @@ change to the binding's return tuple has one place to land.
 ## Tests
 
 ```bash
-uv run pytest -q -m "not slow"   # 180 tests, a few seconds
+uv run pytest -q -m "not slow"   # 210 tests, a few seconds
 uv run pytest -q                 # adds the MovieLens integration tests
-cargo test                       # 16 Rust unit tests
+cargo test                       # 20 Rust unit tests
 ```
 
 The `slow` marker covers the MovieLens tests, which need the `bench` group (for

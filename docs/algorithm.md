@@ -1,7 +1,7 @@
 # The fastslim solver
 
 How `fastslim.fit` turns a user-item matrix into item-item weights, and why each
-shortcut it takes is exact rather than approximate. The code that implements this lives
+shortcut it takes is exact. The code that implements this lives
 in [`src/gram.rs`](../src/gram.rs) (the Gram matrix) and
 [`src/solver.rs`](../src/solver.rs) (coordinate descent); the Python side in
 [`python/fastslim/api.py`](../python/fastslim/api.py) only validates and converts.
@@ -141,9 +141,6 @@ The diagonal constraint $w_i = 0$ needs no code at all: `Gram` stores $P_{kk}$ i
 separate `diag` array and never puts $k$ into row $k$, so $i \notin C_i$ by
 construction.
 
-> The 0.1.x releases also skipped an entire item when $P_{ii} < \lambda^2$. That test
-> was not valid — it does not follow from anything above — and it has been removed.
-
 ## 5. Residual maintenance
 
 Recomputing $c_k = P_{ik} - \sum_{j \ne k} w_j P_{jk}$ from scratch would cost a full
@@ -239,10 +236,6 @@ An item that runs out of `max_iter` before a full pass comes back quiet returns 
 optimum. `fit` reports this through `fastslim.ConvergenceWarning`, and `SLIM` records it
 per item in `n_passes` and `converged`.
 
-> 0.1.x removed a coordinate from the active set permanently once it hit zero, so a
-> weight that should have re-entered later never could. That is why 0.2.0 results differ
-> from 0.1.x even at identical hyperparameters: the old answer was not the optimum.
-
 ## 7. What convergence guarantees
 
 The KKT conditions for $\min f_i(w)$ over $w \ge 0$ use the gradient of the smooth
@@ -336,8 +329,7 @@ n_threads=1)` and `fastslim.fit(X, n_threads=None)` produce identical `indptr`,
 
 Duplicate entries within a row of $X$ are summed rather than dropped, and the diagonal
 comes out of the *same* accumulator as the off-diagonal entries, so $P_{kk}$ can never
-disagree with the rest of row $k$. (0.1.x computed the diagonal separately and got a
-nonzero $W$ diagonal on inputs with duplicate CSR entries.)
+disagree with the rest of row $k$.
 
 ## 9. Numerical guards
 
@@ -378,8 +370,7 @@ Against Ning & Karypis, *SLIM: Sparse Linear Methods for Top-N Recommender Syste
 
 * **Same objective, including the $\beta/2$ convention.** The paper's regulariser is
   $\tfrac{\beta}{2}\lVert W \rVert_F^2 + \lambda \lVert W \rVert_1$, and that is what
-  the solver implements. (The 0.1.x README documented $\beta \lVert w \rVert^2$; the
-  code was right and the README was wrong.)
+  the solver implements.
 * **Non-negativity is exploited, not just imposed.** The paper states $W \ge 0$ as a
   constraint. Here it additionally licenses the exact candidate restriction of §4, which
   is what makes each per-item problem small.
