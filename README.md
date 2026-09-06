@@ -18,7 +18,7 @@ in about a second.
 ## Install
 
 ```bash
-pip install fastslim
+pip install fastslim  # or: uv add fastslim
 ```
 
 Wheels for Linux (x86_64, aarch64), macOS and Windows, Python 3.10 and newer. Runtime
