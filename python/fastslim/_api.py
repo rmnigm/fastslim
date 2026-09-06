@@ -106,8 +106,8 @@ def fit(
     interaction_matrix: Any,
     lambd: float = 0.5,
     beta: float = 0.5,
-    max_iter: int = 100,
-    tol: float = 1e-6,
+    max_iter: int = 1000,
+    tol: float = 1e-4,
     n_threads: int | None = None,
 ) -> sparse.csr_matrix:
     r"""Fit SLIM item-item weights with non-negative coordinate descent.
@@ -148,11 +148,11 @@ def fit(
         On count-scale data :math:`P_{kk}` can reach the thousands while
         ``beta`` is a fraction; raising ``beta`` improves the conditioning and
         so the number of passes a fit needs.
-    max_iter : int, default=100
+    max_iter : int, default=1000
         Maximum number of coordinate-descent passes per item.  Full passes over
         every candidate and passes over the active set both count towards it.
         ``0`` returns an all-zero weight matrix.
-    tol : float, default=1e-6
+    tol : float, default=1e-4
         Convergence tolerance on the largest weight change within a pass.  An
         item is done once a full pass moves no weight by ``tol`` or more, so
         ``tol=0`` means exactly ``max_iter`` passes.

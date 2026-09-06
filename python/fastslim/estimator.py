@@ -21,8 +21,8 @@ _PARAM_NAMES = ("lambd", "beta", "max_iter", "tol", "n_threads")
 _DEFAULTS: dict[str, Any] = {
     "lambd": 0.5,
     "beta": 0.5,
-    "max_iter": 100,
-    "tol": 1e-6,
+    "max_iter": 1000,
+    "tol": 1e-4,
     "n_threads": None,
 }
 
@@ -61,10 +61,10 @@ class SLIM:
         L2 penalty; shrinks weights and makes the solution unique.  It also
         conditions the per-coordinate denominator :math:`P_{kk} + \beta`, so
         raising it cuts the number of passes a fit needs.
-    max_iter : int, default=100
+    max_iter : int, default=1000
         Maximum coordinate-descent passes per item; full passes and active-set
         passes both count towards it.
-    tol : float, default=1e-6
+    tol : float, default=1e-4
         Convergence tolerance on the largest weight change within a pass.  An
         item is done once a full pass moves no weight by ``tol`` or more, so
         ``tol=0`` means exactly ``max_iter`` passes.
@@ -104,8 +104,8 @@ class SLIM:
         self,
         lambd: float = 0.5,
         beta: float = 0.5,
-        max_iter: int = 100,
-        tol: float = 1e-6,
+        max_iter: int = 1000,
+        tol: float = 1e-4,
         n_threads: int | None = None,
     ) -> None:
         self.lambd = lambd

@@ -21,7 +21,7 @@ def ill_conditioned():
     For target item 2 the candidates 0 and 1 have identical columns, so the
     objective is flat along ``w_0 - w_1`` except for the ``beta`` term and each
     pass shrinks the error only by ``(P / (P + beta)) ** 2``: hundreds of
-    passes at ``tol=1e-6``, far more than a budget of three.
+    passes at the default ``tol``, far more than a budget of three.
     """
     X = np.zeros((60, 4))
     X[:50, 0] = 1.0
@@ -73,10 +73,10 @@ def test_estimator_records_per_item_diagnostics(ill_conditioned):
 def test_truncated_and_converged_weights_differ(ill_conditioned):
     with pytest.warns(ConvergenceWarning):
         truncated = fastslim.fit(ill_conditioned, max_iter=3, **PARAMS)
-    full = fastslim.fit(ill_conditioned, max_iter=GENEROUS, **PARAMS)
+    full = fastslim.fit(ill_conditioned, max_iter=GENEROUS, tol=1e-8, **PARAMS)
     assert not np.allclose(truncated.toarray(), full.toarray())
     # At the optimum the two identical columns share the weight equally.
-    assert full[0, 2] == pytest.approx(full[1, 2], abs=1e-4)
+    assert full[0, 2] == pytest.approx(full[1, 2], abs=1e-6)
 
 
 def test_max_iter_zero_warns_when_there_is_work_to_do(binary_matrix):

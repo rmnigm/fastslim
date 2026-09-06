@@ -21,6 +21,11 @@ evaluation API, real input validation, and published wheels.
   items on an invalid test. `fit` now solves the problem to KKT optimality, so expect a
   different — and denser — `W`, and better ranking metrics. Re-tune `lambd` rather than
   assuming an old value still gives the same sparsity.
+- **New defaults: `max_iter=1000`, `tol=1e-4`** (0.1.x: `max_iter=100`, `tol=1e-6`).
+  Popular items with near-identical interaction columns are ill-conditioned, and the old
+  budget left 2,503 of the 3,953 MovieLens 1M items truncated. With the new defaults
+  every ML-1M item converges in about 12 s on a laptop; an item that still runs out of
+  budget is reported through `ConvergenceWarning` instead of silently returned.
 - **The returned container mirrors the input.** A SciPy sparse *array* (`csr_array`,
   `coo_array`, ...) now yields a `csr_array`; sparse matrices, dense arrays and
   array-likes yield a `csr_matrix`. 0.1.x always returned a `csr_matrix`.
@@ -29,8 +34,9 @@ evaluation API, real input validation, and published wheels.
   hyperparameter of the wrong type (`max_iter=1.5`, `max_iter=True`) raises `TypeError`.
   0.1.x accepted these and returned nonsense or aborted.
 - **The private extension API changed.** `fastslim._slim_rs.solve_slim` now takes the
-  CSR arrays as keyword arguments and returns `(indptr, indices, data)` describing `W`
-  in CSC layout. It is private; call `fastslim.fit`.
+  CSR arrays as keyword arguments and returns `(indptr, indices, data, n_passes,
+  converged)`: `W` in CSC layout plus per-item pass counts and convergence flags. It is
+  private; call `fastslim.fit`.
 - **Tests are no longer shipped in the wheel.** The distribution contains
   `python/fastslim/` only; the suite lives in `tests/` at the repo root.
 - The package is Apache-2.0 throughout. 0.1.x metadata disagreed with itself about the

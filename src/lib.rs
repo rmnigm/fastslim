@@ -84,7 +84,7 @@ where
 /// Raises `ValueError` on malformed input, out-of-range parameters, or
 /// interaction values so large that the Gram matrix `X^T X` overflows.
 #[pyfunction]
-#[pyo3(signature = (data, indices, indptr, n_rows, n_cols, lambd=0.5, beta=0.5, max_iter=100, tol=1e-6, n_threads=None))]
+#[pyo3(signature = (data, indices, indptr, n_rows, n_cols, lambd=0.5, beta=0.5, max_iter=1000, tol=1e-4, n_threads=None))]
 #[allow(clippy::too_many_arguments)]
 fn solve_slim<'py>(
     py: Python<'py>,

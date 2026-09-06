@@ -124,8 +124,8 @@ impl Default for SlimParams {
         SlimParams {
             lambd: 0.5,
             beta: 0.5,
-            max_iter: 100,
-            tol: 1e-6,
+            max_iter: 1000,
+            tol: 1e-4,
             n_threads: None,
         }
     }
