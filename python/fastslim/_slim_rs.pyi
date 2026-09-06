@@ -52,6 +52,9 @@ def solve_slim(
         of target item ``i`` in ascending order, with strictly positive weights
         ``W[k, i]``.  Hence ``scores = X @ W``.
 
+        ``src/lib.rs`` is the authority on this tuple; the members listed here
+        mirror it and must be updated alongside it.
+
     Raises
     ------
     ValueError

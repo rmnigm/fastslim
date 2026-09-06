@@ -73,6 +73,11 @@ class SLIM:
         ``fit``.
     n_items_ : int
         Number of items seen during ``fit``.
+    n_passes_ : numpy.ndarray or None
+        Coordinate-descent passes actually used for each item.  ``None`` until
+        the solver reports it.
+    converged_ : numpy.ndarray or None
+        Per-item convergence flags.  ``None`` until the solver reports it.
 
     Examples
     --------
@@ -149,6 +154,11 @@ class SLIM:
             n_threads=self.n_threads,
         )
         self.n_items_ = int(self.weights_.shape[0])
+        # Placeholders for per-item solver diagnostics.  The extension does not
+        # report them yet; when it does, populate them here from what
+        # ``_api.fit`` passes back rather than adding new attributes.
+        self.n_passes_ = None
+        self.converged_ = None
         return self
 
     def _weights(self) -> sparse.csr_matrix:

@@ -16,6 +16,36 @@ __all__ = ["fit", "predict", "recommend"]
 _SPARRAY: Any = getattr(sparse, "sparray", ())
 
 
+def _solve(
+    matrix: Any,
+    lambd: float,
+    beta: float,
+    max_iter: int,
+    tol: float,
+    n_threads: int | None,
+) -> tuple[np.ndarray, ...]:
+    """Call the Rust solver on a canonical CSR matrix.
+
+    The single point of contact with the extension module.  Everything the
+    solver returns passes through here, so a change to the binding's return
+    tuple only has to be absorbed in this function and its callers.  The shape
+    of that tuple is documented in ``src/lib.rs``; today it is
+    ``(indptr, indices, data)`` describing ``W`` in CSC layout.
+    """
+    return _solve_slim(
+        data=matrix.data,
+        indices=matrix.indices,
+        indptr=matrix.indptr,
+        n_rows=matrix.shape[0],
+        n_cols=matrix.shape[1],
+        lambd=lambd,
+        beta=beta,
+        max_iter=max_iter,
+        tol=tol,
+        n_threads=n_threads,
+    )
+
+
 def fit(
     interaction_matrix: Any,
     lambd: float = 0.5,
@@ -101,20 +131,9 @@ def fit(
         lambd, beta, max_iter, tol, n_threads
     )
     matrix, is_sparse_array = check_interaction_matrix(interaction_matrix)
-    n_users, n_items = matrix.shape
+    n_items = matrix.shape[1]
 
-    indptr, indices, data = _solve_slim(
-        data=matrix.data,
-        indices=matrix.indices,
-        indptr=matrix.indptr,
-        n_rows=n_users,
-        n_cols=n_items,
-        lambd=lambd,
-        beta=beta,
-        max_iter=max_iter,
-        tol=tol,
-        n_threads=n_threads,
-    )
+    indptr, indices, data = _solve(matrix, lambd, beta, max_iter, tol, n_threads)
 
     # The solver returns W column by column (one segment per target item),
     # which is exactly CSC; converting gives canonical, sorted CSR.

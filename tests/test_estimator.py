@@ -31,6 +31,13 @@ def test_fit_matches_the_function(fitted):
     assert isinstance(model.n_items_, int)
 
 
+def test_fit_sets_the_solver_diagnostic_attributes(fitted):
+    """Placeholders until the extension reports per-item convergence."""
+    _, model = fitted
+    assert hasattr(model, "n_passes_")
+    assert hasattr(model, "converged_")
+
+
 def test_predict_and_recommend_match_the_functions(fitted):
     X, model = fitted
     W = model.weights_
