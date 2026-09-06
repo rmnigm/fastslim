@@ -14,10 +14,13 @@ use pyo3::prelude::*;
 
 use solver::{solve_slim_csr, SlimError, SlimParams};
 
-type CscArrays<'py> = (
+/// `(indptr, indices, data, n_passes, converged)`, see [`solve_slim`].
+type SolveOutput<'py> = (
     Bound<'py, PyArray1<i64>>,
     Bound<'py, PyArray1<i64>>,
     Bound<'py, PyArray1<f64>>,
+    Bound<'py, PyArray1<i64>>,
+    Bound<'py, PyArray1<bool>>,
 );
 
 /// scipy stores CSR index arrays as int32 or int64; accept both as-is.
@@ -63,11 +66,23 @@ where
 ///
 /// `data`, `indices`, `indptr` are the CSR arrays of the (n_rows x n_cols)
 /// user-item matrix; `data` must be float64, finite and non-negative;
-/// `indices`/`indptr` may be int32 or int64. Returns `(indptr, indices, data)`
-/// of the item-item weight matrix `W` in CSC layout (int64, int64, float64):
-/// `indices[indptr[i]:indptr[i+1]]` are the neighbours `k` of target item `i`
-/// (ascending) with weights `W[k, i] > 0`, so that `scores = X @ W`.
-/// Raises `ValueError` on malformed input or out-of-range parameters.
+/// `indices`/`indptr` may be int32 or int64. Returns the 5-tuple
+/// `(indptr, indices, data, n_passes, converged)`:
+///
+/// * `indptr` (int64, n_cols + 1), `indices` (int64, nnz), `data` (float64,
+///   nnz): the item-item weight matrix `W` in CSC layout, where
+///   `indices[indptr[i]:indptr[i+1]]` are the neighbours `k` of target item
+///   `i` (ascending) with weights `W[k, i] > 0`, so that `scores = X @ W`.
+/// * `n_passes` (int64, n_cols): coordinate-descent passes spent on each
+///   item (active-set and full passes both count, `<= max_iter`).
+/// * `converged` (bool, n_cols): whether each item met `tol`, which
+///   guarantees a per-coordinate KKT violation of at most
+///   `(P_kk + beta) * tol`. `False` means the item was cut off at `max_iter`
+///   (always the case for `max_iter = 0` or `tol = 0`) and its weights are a
+///   truncated, though feasible, solution.
+///
+/// Raises `ValueError` on malformed input, out-of-range parameters, or
+/// interaction values so large that the Gram matrix `X^T X` overflows.
 #[pyfunction]
 #[pyo3(signature = (data, indices, indptr, n_rows, n_cols, lambd=0.5, beta=0.5, max_iter=100, tol=1e-6, n_threads=None))]
 #[allow(clippy::too_many_arguments)]
@@ -83,7 +98,7 @@ fn solve_slim<'py>(
     max_iter: usize,
     tol: f64,
     n_threads: Option<usize>,
-) -> PyResult<CscArrays<'py>> {
+) -> PyResult<SolveOutput<'py>> {
     // Borrow contiguous data in place; copy only strided views.
     let data: Cow<'_, [f64]> = match data.as_slice() {
         Ok(slice) => Cow::Borrowed(slice),
@@ -108,6 +123,8 @@ fn solve_slim<'py>(
         PyArray1::from_vec(py, out.indptr),
         PyArray1::from_vec(py, out.indices),
         PyArray1::from_vec(py, out.data),
+        PyArray1::from_vec(py, out.n_passes),
+        PyArray1::from_vec(py, out.converged),
     ))
 }
 

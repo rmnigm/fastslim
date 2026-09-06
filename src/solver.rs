@@ -29,12 +29,71 @@
 //! # Active set and termination
 //!
 //! Passes alternate between *full* passes over all candidates and passes over
-//! the *active set* `{k : w_k > 0}` fixed after the last full pass. Active-set
-//! passes repeat until the largest weight change in a pass is `< tol`; then a
-//! full pass runs, and if it too moves every coordinate by less than `tol`
-//! the item is converged. Otherwise the active set is rebuilt and the cycle
-//! repeats. `max_iter` caps the total number of passes (full and active-set
-//! passes both count); `max_iter = 0` yields all-zero weights.
+//! the *active set* fixed after the last full pass. Active-set passes repeat
+//! until the largest weight change in a pass is `< tol`; then a full pass
+//! runs. If that full pass also moves every coordinate by less than `tol`,
+//! the convergence check below runs at the final residuals of the pass and
+//! the item is converged if it succeeds. Otherwise the active set is rebuilt
+//! (the positive coordinates, plus any the check found wanting to enter) and
+//! the cycle repeats.
+//!
+//! ## Convergence check and guarantee
+//!
+//! A full pass with `max |delta w| < tol` on its own only bounds the KKT
+//! violation of a coordinate by `tol * sum_{j != k} P_jk`, because the
+//! coordinates updated later in the pass keep changing its residual. That is
+//! a weak bound for a popular item with many correlated neighbours. So after
+//! such a pass the solver evaluates, for every candidate `k` and without
+//! applying anything, the step the coordinate would take from the *final*
+//! residuals `r_k = P_ik - sum_j w_j P_jk`:
+//!
+//! ```text
+//! w_k > 0:  D_k = (r_k - lambd - beta * w_k) / (P_kk + beta)   (unclipped)
+//! w_k = 0:  D_k = max(0, r_k - lambd) / (P_kk + beta)          (clipped)
+//! ```
+//!
+//! and the item is converged only if `max_k |D_k| < tol` as well. (For a
+//! positive weight the unclipped step is used deliberately: a tiny `w_k`
+//! whose update clips to zero would otherwise pass with `|D_k| = w_k` while
+//! hiding an arbitrarily large gradient.) The check costs `O(m)` for `m`
+//! candidates and is part of the full pass, so it never counts towards
+//! `max_iter`. It gives the guarantee that at exit with `converged == true`
+//! every candidate `k` satisfies
+//!
+//! ```text
+//! w_k > 0:  |r_k - lambd - beta * w_k| <= (P_kk + beta) * tol
+//! w_k = 0:  r_k - lambd               <= (P_kk + beta) * tol
+//! ```
+//!
+//! i.e. its KKT violation is at most `(P_kk + beta) * tol`, up to round-off
+//! in the incrementally maintained residuals. Non-candidates
+//! (`P_ik < lambd`) satisfy their KKT condition exactly, so the bound holds
+//! for every `k != i`.
+//!
+//! ## Pass budget
+//!
+//! `max_iter` caps the total number of passes per item, and passes of *both*
+//! kinds count (active-set passes as well as full passes), so an
+//! ill-conditioned item may consume two to three times the budget that the
+//! same number of plain cyclic sweeps would. `tol = 0` disables the stopping
+//! test: every item with candidates runs exactly `max_iter` passes and is
+//! never flagged converged. When the budget runs out the current iterate is
+//! returned as-is. It is always feasible (`w >= 0`, `w_i = 0`) and no pass
+//! ever increases the objective, but it is a truncated solution whose KKT
+//! violations are not bounded. Such items are reported with
+//! `converged == false` and `n_passes == max_iter` in [`CscOutput`]; in
+//! particular `max_iter = 0` yields all-zero weights flagged unconverged for
+//! every item that has candidates. Items without candidates are trivially
+//! converged with `n_passes == 0`.
+//!
+//! # Numerical guards
+//!
+//! A Gram matrix with non-finite entries (overflow of `sum_u x_uk x_uj`) is
+//! rejected with [`SlimError::InvalidInput`] before solving; it would
+//! otherwise turn every update into `NaN` and silently yield an all-zero `W`.
+//! A coordinate with `P_kk + beta` not greater than zero (only possible for
+//! `beta = 0` when `x_uk^2` underflows) is left at `w_k = 0` instead of
+//! dividing by zero, and counts as satisfied in the convergence check.
 
 use crate::gram::Gram;
 use rayon::prelude::*;
@@ -47,9 +106,14 @@ pub struct SlimParams {
     pub lambd: f64,
     /// L2 penalty `beta >= 0` (objective term is `beta / 2 * ||w||^2`).
     pub beta: f64,
-    /// Maximum number of coordinate-descent passes per item.
+    /// Maximum number of coordinate-descent passes per item. Active-set
+    /// passes and full passes both count. An item that exhausts the budget
+    /// is returned as it stands and flagged in [`CscOutput::converged`].
     pub max_iter: usize,
-    /// Convergence tolerance on `max |delta w|` within a pass, `tol >= 0`.
+    /// Convergence tolerance `tol >= 0` on the largest weight change in a
+    /// pass and on the would-be steps of the final check; see the module
+    /// docs for the resulting KKT bound. `tol = 0` means exactly `max_iter`
+    /// passes per item.
     pub tol: f64,
     /// Rayon thread count; `None` uses the global pool (all cores).
     pub n_threads: Option<usize>,
@@ -71,17 +135,26 @@ impl Default for SlimParams {
 /// `indptr[i]..indptr[i+1]` of `indices`/`data` lists neighbours `k`
 /// (ascending, never `i` itself) and weights `w_ik > 0`, i.e.
 /// `W[k, i] = w_ik` and predictions are `scores = X @ W`.
+///
+/// `n_passes` and `converged` have one entry per item (see the module docs,
+/// "Pass budget").
 #[derive(Clone, Debug, PartialEq)]
 pub struct CscOutput {
     pub n_items: usize,
     pub indptr: Vec<i64>,
     pub indices: Vec<i64>,
     pub data: Vec<f64>,
+    /// Coordinate-descent passes spent on each item, `<= max_iter`.
+    pub n_passes: Vec<i64>,
+    /// Whether each item passed the convergence check. `false` means it was
+    /// cut off at `max_iter` (which includes `max_iter == 0`) and its
+    /// weights are a truncated solution.
+    pub converged: Vec<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SlimError {
-    /// Malformed CSR input or out-of-range parameter.
+    /// Malformed CSR input, out-of-range parameter, or an overflowing Gram.
     InvalidInput(String),
     /// Rayon could not build the requested thread pool.
     ThreadPool(String),
@@ -127,6 +200,15 @@ impl Scratch {
     }
 }
 
+/// Solution of one item: neighbours (ascending), weights (`> 0`), passes
+/// spent and whether the convergence check succeeded.
+struct ItemResult {
+    idx: Vec<u32>,
+    val: Vec<f64>,
+    n_passes: i64,
+    converged: bool,
+}
+
 /// One coordinate-descent pass over the given local coordinates. Returns the
 /// largest absolute weight change.
 ///
@@ -149,8 +231,13 @@ fn cd_pass<I: Iterator<Item = usize>>(
     for t in coords {
         let k = cand[t] as usize;
         let diag_k = gram.diag[k];
+        let denom = diag_k + beta;
+        if denom <= 0.0 {
+            // No curvature (beta = 0 and P_kk underflowed): keep w_t = 0.
+            continue;
+        }
         let c = r[t] + diag_k * w[t];
-        let w_new = ((c - lambd) / (diag_k + beta)).max(0.0);
+        let w_new = ((c - lambd) / denom).max(0.0);
         let delta = w_new - w[t];
         if delta != 0.0 {
             w[t] = w_new;
@@ -174,9 +261,41 @@ fn cd_pass<I: Iterator<Item = usize>>(
     max_delta
 }
 
-/// Solve the per-item problem for target item `i`. Returns `(neighbours,
-/// weights)` with neighbours ascending and all weights `> 0`.
-fn solve_item(i: usize, gram: &Gram, p: &SlimParams, s: &mut Scratch) -> (Vec<u32>, Vec<f64>) {
+/// Convergence check at the final residuals of a full pass (module docs,
+/// "Convergence check and guarantee"). Returns `max_k |D_k|` without
+/// applying anything, and rebuilds `active` as the coordinates that are
+/// positive or would become positive.
+fn check_pass(
+    gram: &Gram,
+    lambd: f64,
+    beta: f64,
+    cand: &[u32],
+    r: &[f64],
+    w: &[f64],
+    active: &mut Vec<u32>,
+) -> f64 {
+    active.clear();
+    let mut max_step = 0.0f64;
+    for (t, &k) in cand.iter().enumerate() {
+        let denom = gram.diag[k as usize] + beta;
+        if denom <= 0.0 {
+            continue;
+        }
+        // Unclipped step, i.e. minus the KKT gradient over the curvature.
+        let step = (r[t] - lambd - beta * w[t]) / denom;
+        if w[t] > 0.0 {
+            active.push(t as u32);
+            max_step = max_step.max(step.abs());
+        } else if step > 0.0 {
+            active.push(t as u32);
+            max_step = max_step.max(step);
+        }
+    }
+    max_step
+}
+
+/// Solve the per-item problem for target item `i`.
+fn solve_item(i: usize, gram: &Gram, p: &SlimParams, s: &mut Scratch) -> ItemResult {
     let Scratch {
         pos,
         cand,
@@ -198,7 +317,13 @@ fn solve_item(i: usize, gram: &Gram, p: &SlimParams, s: &mut Scratch) -> (Vec<u3
     }
     let m = cand.len();
     if m == 0 || p.max_iter == 0 {
-        return (Vec::new(), Vec::new());
+        return ItemResult {
+            idx: Vec::new(),
+            val: Vec::new(),
+            n_passes: 0,
+            // Nothing to solve is converged; no budget to solve it is not.
+            converged: m == 0,
+        };
     }
     for (t, &k) in cand.iter().enumerate() {
         pos[k as usize] = t as u32;
@@ -208,15 +333,20 @@ fn solve_item(i: usize, gram: &Gram, p: &SlimParams, s: &mut Scratch) -> (Vec<u3
     active.clear();
 
     let mut full = true;
-    let mut passes = 0;
+    let mut passes = 0usize;
+    let mut converged = false;
     while passes < p.max_iter {
         passes += 1;
         if full {
             let max_delta = cd_pass(0..m, gram, lambd, beta, cand, pos, r, w);
-            active.clear();
-            active.extend((0..m).filter(|&t| w[t] > 0.0).map(|t| t as u32));
             if max_delta < p.tol {
-                break;
+                if check_pass(gram, lambd, beta, cand, r, w, active) < p.tol {
+                    converged = true;
+                    break;
+                }
+            } else {
+                active.clear();
+                active.extend((0..m).filter(|&t| w[t] > 0.0).map(|t| t as u32));
             }
             // An empty active set after a moving full pass means everything
             // fell back to zero; let the next full pass decide.
@@ -230,36 +360,47 @@ fn solve_item(i: usize, gram: &Gram, p: &SlimParams, s: &mut Scratch) -> (Vec<u3
         }
     }
 
-    let mut out_idx = Vec::new();
-    let mut out_val = Vec::new();
+    let mut idx = Vec::new();
+    let mut val = Vec::new();
     for (t, &k) in cand.iter().enumerate() {
         if w[t] > 0.0 {
-            out_idx.push(k);
-            out_val.push(w[t]);
+            idx.push(k);
+            val.push(w[t]);
         }
     }
     for &k in cand.iter() {
         pos[k as usize] = NOT_CAND;
     }
-    (out_idx, out_val)
+    ItemResult {
+        idx,
+        val,
+        n_passes: passes as i64,
+        converged,
+    }
 }
 
-fn assemble(n_items: usize, per_item: Vec<(Vec<u32>, Vec<f64>)>) -> CscOutput {
-    let nnz: usize = per_item.iter().map(|(idx, _)| idx.len()).sum();
+fn assemble(n_items: usize, per_item: Vec<ItemResult>) -> CscOutput {
+    let nnz: usize = per_item.iter().map(|item| item.idx.len()).sum();
     let mut indptr = Vec::with_capacity(n_items + 1);
     let mut indices = Vec::with_capacity(nnz);
     let mut data = Vec::with_capacity(nnz);
+    let mut n_passes = Vec::with_capacity(n_items);
+    let mut converged = Vec::with_capacity(n_items);
     indptr.push(0i64);
-    for (idx, val) in per_item {
-        indices.extend(idx.iter().map(|&k| k as i64));
-        data.extend_from_slice(&val);
+    for item in per_item {
+        indices.extend(item.idx.iter().map(|&k| k as i64));
+        data.extend_from_slice(&item.val);
         indptr.push(indices.len() as i64);
+        n_passes.push(item.n_passes);
+        converged.push(item.converged);
     }
     CscOutput {
         n_items,
         indptr,
         indices,
         data,
+        n_passes,
+        converged,
     }
 }
 
@@ -339,12 +480,13 @@ fn validate(
 }
 
 /// Fit SLIM on a CSR user-item matrix `X` (`n_rows` users x `n_cols` items)
-/// and return the item-item weights `W` in CSC layout (see [`CscOutput`]).
+/// and return the item-item weights `W` in CSC layout together with the
+/// per-item pass counts and convergence flags (see [`CscOutput`]).
 ///
 /// `data` must be finite and non-negative; duplicate column entries within
-/// a row are summed and indices need not be sorted. Output is
-/// deterministic: identical inputs give byte-identical results regardless of
-/// `n_threads`.
+/// a row are summed and indices need not be sorted. Values so large that the
+/// Gram matrix `X^T X` overflows are rejected. Output is deterministic:
+/// identical inputs give byte-identical results regardless of `n_threads`.
 pub fn solve_slim_csr(
     data: &[f64],
     indices: &[u32],
@@ -354,16 +496,21 @@ pub fn solve_slim_csr(
     params: SlimParams,
 ) -> Result<CscOutput, SlimError> {
     validate(data, indices, indptr, n_rows, n_cols, &params)?;
-    let run = || {
+    let run = || -> Result<CscOutput, SlimError> {
         let gram = Gram::from_csr(data, indices, indptr, n_rows, n_cols);
-        let per_item: Vec<(Vec<u32>, Vec<f64>)> = (0..n_cols)
+        if gram.diag.iter().chain(&gram.data).any(|v| !v.is_finite()) {
+            return Err(SlimError::InvalidInput(
+                "interaction values are too large: Gram matrix overflowed to infinity".to_string(),
+            ));
+        }
+        let per_item: Vec<ItemResult> = (0..n_cols)
             .into_par_iter()
             .map_init(
                 || Scratch::new(n_cols),
                 |scratch, i| solve_item(i, &gram, &params, scratch),
             )
             .collect();
-        assemble(n_cols, per_item)
+        Ok(assemble(n_cols, per_item))
     };
     match params.n_threads {
         Some(t) => {
@@ -371,9 +518,9 @@ pub fn solve_slim_csr(
                 .num_threads(t)
                 .build()
                 .map_err(|e| SlimError::ThreadPool(e.to_string()))?;
-            Ok(pool.install(run))
+            pool.install(run)
         }
-        None => Ok(run()),
+        None => run(),
     }
 }
 
@@ -384,7 +531,9 @@ mod tests {
     #![allow(clippy::needless_range_loop)]
 
     use super::*;
-    use crate::test_util::{csr_from_dense, random_binary};
+    use crate::test_util::{
+        csr_from_dense, near_duplicate_items, random_binary, random_zipf_counts,
+    };
 
     fn dense_gram(x: &[Vec<f64>]) -> Vec<Vec<f64>> {
         let n = x[0].len();
@@ -453,11 +602,14 @@ mod tests {
         wmat
     }
 
-    /// Largest KKT violation of `W` for the objective in the module docs.
-    fn kkt_violation(x: &[Vec<f64>], w: &[Vec<f64>], lambd: f64, beta: f64) -> f64 {
+    /// KKT violation of every coordinate `[i][k]` (`k != i`) of `W` for the
+    /// objective in the module docs, computed from scratch with the dense
+    /// Gram: `|r_k - lambd - beta w_k|` for `w_k > 0`, `max(0, r_k - lambd)`
+    /// for `w_k = 0`.
+    fn kkt_violations(x: &[Vec<f64>], w: &[Vec<f64>], lambd: f64, beta: f64) -> Vec<Vec<f64>> {
         let p = dense_gram(x);
         let n = p.len();
-        let mut worst = 0.0f64;
+        let mut viol = vec![vec![0.0; n]; n];
         for i in 0..n {
             for k in 0..n {
                 if k == i {
@@ -467,14 +619,22 @@ mod tests {
                 for j in 0..n {
                     g -= w[j][i] * p[j][k];
                 }
-                if w[k][i] > 0.0 {
-                    worst = worst.max((g - lambd - beta * w[k][i]).abs());
+                viol[i][k] = if w[k][i] > 0.0 {
+                    (g - lambd - beta * w[k][i]).abs()
                 } else {
-                    worst = worst.max(g - lambd);
-                }
+                    (g - lambd).max(0.0)
+                };
             }
         }
-        worst
+        viol
+    }
+
+    /// Largest KKT violation of `W`.
+    fn kkt_violation(x: &[Vec<f64>], w: &[Vec<f64>], lambd: f64, beta: f64) -> f64 {
+        kkt_violations(x, w, lambd, beta)
+            .iter()
+            .flatten()
+            .fold(0.0, |a, &b| f64::max(a, b))
     }
 
     fn fit(x: &[Vec<f64>], params: SlimParams) -> CscOutput {
@@ -494,6 +654,9 @@ mod tests {
 
     fn check_invariants(out: &CscOutput) {
         let n = out.n_items;
+        assert_eq!(out.n_passes.len(), n);
+        assert_eq!(out.converged.len(), n);
+        assert!(out.n_passes.iter().all(|&p| p >= 0));
         assert_eq!(out.indptr.len(), n + 1);
         assert_eq!(out.indptr[0], 0);
         assert_eq!(*out.indptr.last().unwrap() as usize, out.indices.len());
@@ -525,6 +688,7 @@ mod tests {
     fn assert_matches_reference(x: &[Vec<f64>], lambd: f64, beta: f64) {
         let out = fit(x, tight(lambd, beta));
         check_invariants(&out);
+        assert!(out.converged.iter().all(|&c| c), "not all items converged");
         let w = to_dense_w(&out);
         let w_ref = reference(x, lambd, beta);
         assert_eq!(
@@ -587,6 +751,9 @@ mod tests {
         check_invariants(&out);
         assert_eq!(out.indptr, vec![0, 0, 0, 0]);
         assert!(out.indices.is_empty() && out.data.is_empty());
+        // No candidates: nothing to solve, trivially converged in 0 passes.
+        assert_eq!(out.n_passes, vec![0, 0, 0]);
+        assert_eq!(out.converged, vec![true, true, true]);
     }
 
     #[test]
@@ -594,7 +761,161 @@ mod tests {
         let mut p = tight(0.5, 0.5);
         p.max_iter = 0;
         let out = fit(&three_items(), p);
+        check_invariants(&out);
         assert_eq!(out.indptr, vec![0, 0, 0, 0]);
+        // Every item has candidates (all P_ik >= 0.5) but no budget.
+        assert_eq!(out.n_passes, vec![0, 0, 0]);
+        assert_eq!(out.converged, vec![false, false, false]);
+    }
+
+    #[test]
+    fn reports_pass_counts_and_convergence() {
+        let x = random_zipf_counts(41, 300, 40);
+        let params = |max_iter| SlimParams {
+            lambd: 0.5,
+            beta: 0.5,
+            max_iter,
+            tol: 1e-8,
+            n_threads: Some(1),
+        };
+
+        // Tight budget: the truncated items are flagged and report exactly
+        // max_iter passes; the output is still a well-formed feasible point.
+        let cut = fit(&x, params(3));
+        check_invariants(&cut);
+        let n_bad = cut.converged.iter().filter(|&&c| !c).count();
+        assert!(n_bad > 0, "expected some items to hit max_iter = 3");
+        for i in 0..cut.n_items {
+            if cut.converged[i] {
+                assert!(cut.n_passes[i] <= 3, "item {i}: {} passes", cut.n_passes[i]);
+            } else {
+                assert_eq!(cut.n_passes[i], 3, "item {i}");
+            }
+        }
+
+        // Generous budget: everything converges within it, and items that
+        // ended up with weights needed at least one pass.
+        let ok = fit(&x, params(10_000));
+        check_invariants(&ok);
+        assert!(ok.converged.iter().all(|&c| c));
+        for i in 0..ok.n_items {
+            assert!(ok.n_passes[i] <= 10_000);
+            if ok.indptr[i + 1] > ok.indptr[i] {
+                assert!(ok.n_passes[i] >= 1, "item {i}");
+            }
+        }
+        assert!(
+            ok.n_passes.iter().any(|&p| p > 3),
+            "budget of 3 was not binding"
+        );
+
+        // tol = 0 disables the stopping test: exactly max_iter passes, never
+        // flagged converged (for items with candidates, i.e. all of them here).
+        let exact = fit(
+            &x,
+            SlimParams {
+                tol: 0.0,
+                ..params(7)
+            },
+        );
+        assert!(exact.n_passes.iter().all(|&p| p == 7));
+        assert!(exact.converged.iter().all(|&c| !c));
+    }
+
+    #[test]
+    fn converged_items_meet_kkt_bound() {
+        // At exit with converged == true every coordinate's KKT violation is
+        // at most (P_kk + beta) * tol (module docs, "Convergence check and
+        // guarantee"). Loose tolerances make the bound, not closeness to
+        // the optimum, the property under test. On the random problems a
+        // plain `max |delta w| < tol` stop already satisfies it (violations
+        // reach ~0.75 of the bound); on the near-duplicate problems, where
+        // coordinate descent crawls along `sum_k w_k` and the coordinates of
+        // a full pass all move together, that stop overshoots the bound by
+        // 1.3x-4.5x and only the final check brings it to <= 1.0. The
+        // relative slack covers round-off in the incrementally maintained
+        // residuals.
+        let problems = [
+            random_binary(31, 60, 20, 0.3),
+            random_zipf_counts(32, 400, 50),
+            near_duplicate_items(34, 500, 12, 20),
+            near_duplicate_items(35, 2000, 20, 10),
+        ];
+        for x in &problems {
+            let p = dense_gram(x);
+            for (lambd, beta) in [(0.5, 0.5), (0.1, 0.0), (2.0, 1.0)] {
+                for tol in [1e-2, 1e-4, 1e-6] {
+                    let out = fit(
+                        x,
+                        SlimParams {
+                            lambd,
+                            beta,
+                            max_iter: 1_000_000,
+                            tol,
+                            n_threads: Some(1),
+                        },
+                    );
+                    check_invariants(&out);
+                    assert!(out.converged.iter().all(|&c| c), "tol={tol}");
+                    let viol = kkt_violations(x, &to_dense_w(&out), lambd, beta);
+                    for i in 0..out.n_items {
+                        for k in 0..out.n_items {
+                            let bound = (p[k][k] + beta) * tol;
+                            assert!(
+                                viol[i][k] <= bound * (1.0 + 1e-6),
+                                "item {i}, coord {k}: violation {} > bound {bound} \
+                                 (lambd={lambd}, beta={beta}, tol={tol})",
+                                viol[i][k]
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn rejects_gram_overflow() {
+        // 1e200^2 overflows P to +inf; without the guard every update turns
+        // into NaN and W comes back silently empty.
+        let (mut data, indices, indptr) = csr_from_dense(&three_items());
+        for v in data.iter_mut() {
+            *v = 1e200;
+        }
+        let err =
+            solve_slim_csr(&data, &indices, &indptr, 4, 3, SlimParams::default()).unwrap_err();
+        assert!(
+            matches!(&err, SlimError::InvalidInput(msg) if msg.contains("overflow")),
+            "{err}"
+        );
+        // Just below the threshold the same matrix solves fine.
+        for v in data.iter_mut() {
+            *v = 1e150;
+        }
+        let out = solve_slim_csr(&data, &indices, &indptr, 4, 3, SlimParams::default()).unwrap();
+        assert!(out.data.iter().all(|v| v.is_finite()));
+    }
+
+    #[test]
+    fn zero_curvature_coordinate_is_left_at_zero() {
+        // One user with x = [1e150, 1e-170]: P_00 = 1e300 and P_01 = 1e-20
+        // are finite but P_11 = 1e-340 underflows to 0. With beta = 0 the
+        // step for w_1 of item 0 would divide by zero; it must be skipped.
+        let x = vec![vec![1e150, 1e-170]];
+        let out = fit(
+            &x,
+            SlimParams {
+                lambd: 0.0,
+                beta: 0.0,
+                max_iter: 100,
+                tol: 1e-12,
+                n_threads: Some(1),
+            },
+        );
+        check_invariants(&out);
+        assert!(out.data.iter().all(|v| v.is_finite()));
+        assert_eq!(out.indptr[0], out.indptr[1], "item 0 must have no weights");
+        assert!(out.converged.iter().all(|&c| c));
     }
 
     #[test]

@@ -52,3 +52,72 @@ pub fn csr_from_dense(x: &[Vec<f64>]) -> (Vec<f64>, Vec<u32>, Vec<usize>) {
     }
     (data, indices, indptr)
 }
+
+/// Dense `n_rows x n_cols` count matrix with Zipf-like item popularity
+/// (item `j` is consumed with probability `~ (j + 1)^-0.6`) and heavy-tailed
+/// counts in `1..=30`, i.e. a badly conditioned Gram matrix with a few very
+/// popular, strongly correlated items.
+pub fn random_zipf_counts(seed: u64, n_rows: usize, n_cols: usize) -> Vec<Vec<f64>> {
+    let mut rng = Lcg::new(seed);
+    (0..n_rows)
+        .map(|_| {
+            (0..n_cols)
+                .map(|j| {
+                    let popularity = 0.9 / (j as f64 + 1.0).powf(0.6);
+                    if rng.uniform() < popularity {
+                        // Pareto-ish tail: 1 / (1 - U)^0.6, capped.
+                        (1.0 / (1.0 - rng.uniform())).powf(0.6).floor().min(30.0)
+                    } else {
+                        0.0
+                    }
+                })
+                .collect()
+        })
+        .collect()
+}
+
+/// Dense `n_rows x (n_dup + n_other)` count matrix whose first `n_dup`
+/// columns are near-copies of one another (a popular "series" every user who
+/// touches it consumes almost completely, with the same count), followed by
+/// `n_other` random binary columns. The Gram matrix has an `n_dup x n_dup`
+/// block of nearly equal entries, so the per-item problems are strongly
+/// coupled and coordinate descent converges slowly along `sum_k w_k`.
+pub fn near_duplicate_items(
+    seed: u64,
+    n_rows: usize,
+    n_dup: usize,
+    n_other: usize,
+) -> Vec<Vec<f64>> {
+    let mut rng = Lcg::new(seed);
+    (0..n_rows)
+        .map(|_| {
+            let base = if rng.uniform() < 0.5 {
+                (1.0 + 5.0 * rng.uniform()).floor()
+            } else {
+                0.0
+            };
+            let mut row = Vec::with_capacity(n_dup + n_other);
+            for _ in 0..n_dup {
+                let u = rng.uniform();
+                // 4% of the entries deviate from the shared count.
+                row.push(if base == 0.0 {
+                    if u < 0.02 {
+                        1.0
+                    } else {
+                        0.0
+                    }
+                } else if u < 0.02 {
+                    0.0
+                } else if u < 0.04 {
+                    base + 1.0
+                } else {
+                    base
+                });
+            }
+            for _ in 0..n_other {
+                row.push(if rng.uniform() < 0.2 { 1.0 } else { 0.0 });
+            }
+            row
+        })
+        .collect()
+}
