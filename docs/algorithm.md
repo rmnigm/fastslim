@@ -4,7 +4,7 @@ How `fastslim.fit` turns a user-item matrix into item-item weights, and why each
 shortcut it takes is exact rather than approximate. The code that implements this lives
 in [`src/gram.rs`](../src/gram.rs) (the Gram matrix) and
 [`src/solver.rs`](../src/solver.rs) (coordinate descent); the Python side in
-[`python/fastslim/_api.py`](../python/fastslim/_api.py) only validates and converts.
+[`python/fastslim/api.py`](../python/fastslim/api.py) only validates and converts.
 
 ## 1. Notation and the objective
 
@@ -210,7 +210,7 @@ cases fall out of this directly:
 An item that runs out of `max_iter` before a full pass comes back quiet returns a
 *truncated* solution: a feasible, non-negative $W$ column that has not reached the
 optimum. `fit` reports this through `fastslim.ConvergenceWarning`, and `SLIM` records it
-per item in `n_passes_` and `converged_`.
+per item in `n_passes` and `converged`.
 
 > 0.1.x removed a coordinate from the active set permanently once it hit zero, so a
 > weight that should have re-entered later never could. That is why 0.2.0 results differ

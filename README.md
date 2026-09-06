@@ -69,13 +69,13 @@ The same solver behind a scikit-learn-flavoured object (no scikit-learn dependen
 from fastslim import SLIM
 
 model = SLIM(lambd=2.0, beta=2.0, max_iter=50).fit(interactions)
-print(model.n_items_, model.weights_.nnz)
+print(model.n_items, model.weights.nnz)
 print(model.recommend(interactions[0], k=5))
 print(model.get_params())
 ```
 
-Learned state lives in trailing-underscore attributes (`weights_`, `n_items_`,
-`n_passes_`, `converged_`); using the model before `fit` raises
+Learned state lives in the attributes `weights`, `n_items`, `n_passes` and
+`converged`, set by `fit`; using the model before `fit` raises
 `fastslim.NotFittedError`, which subclasses both `ValueError` and `AttributeError`.
 
 ### Evaluating
@@ -116,7 +116,7 @@ The matrix above is uniform noise, so those scores only exercise the API; see
 | `fastslim.fit(X, lambd=0.5, beta=0.5, max_iter=1000, tol=1e-4, n_threads=None)` | Fit item-item weights `W`; returns a sparse `(n_items, n_items)` matrix with a zero diagonal and strictly positive stored values |
 | `fastslim.predict(W, history, *, exclude_seen=True, batch_size=None)` | Dense `float64` scores (`history @ W`) for one user or a batch; seen items become `-inf` |
 | `fastslim.recommend(W, history, k=10, *, exclude_seen=True, batch_size=None)` | `int64` item ids ranked best-first; `batch_size` bounds peak memory |
-| `fastslim.SLIM(...)` | Estimator wrapper: `fit`, `predict`, `recommend`, `get_params`, `set_params`, `weights_`, `n_items_`, `n_passes_`, `converged_` |
+| `fastslim.SLIM(...)` | Estimator wrapper: `fit`, `predict`, `recommend`, `get_params`, `set_params`, `weights`, `n_items`, `n_passes`, `converged` |
 | `fastslim.metrics.precision_at_k / recall_at_k / ndcg_at_k` | Top-`k` ranking metrics against a held-out sparse matrix |
 | `fastslim.ConvergenceWarning` | `UserWarning` subclass emitted when some items exhaust `max_iter` |
 | `fastslim.NotFittedError` | Raised by an unfitted `SLIM`; subclasses `ValueError` and `AttributeError` |
@@ -151,8 +151,8 @@ laptop; a tighter `tol=1e-6` with `max_iter=100` leaves most popular items trunc
 because near-identical interaction columns make the per-item problem ill-conditioned.
 
 When some items hit `max_iter` first, `fit` emits a `fastslim.ConvergenceWarning` naming
-how many; `SLIM` additionally records `n_passes_` (passes used per item) and
-`converged_` (a per-item boolean array). A truncated solution is still a valid model,
+how many; `SLIM` additionally records `n_passes` (passes used per item) and
+`converged` (a per-item boolean array). A truncated solution is still a valid model,
 just not the exact optimum. The usual cause is conditioning: on count-scale data `P_kk`
 runs into the thousands while `beta` is around `0.5`, which makes coordinate descent
 crawl. Raise `beta`, or raise `max_iter`.

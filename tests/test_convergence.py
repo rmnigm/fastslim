@@ -57,17 +57,17 @@ def test_warning_points_at_the_caller(ill_conditioned):
 def test_estimator_records_per_item_diagnostics(ill_conditioned):
     with pytest.warns(ConvergenceWarning):
         truncated = SLIM(max_iter=3, **PARAMS).fit(ill_conditioned)
-    assert truncated.n_passes_.dtype == np.int64
-    assert truncated.converged_.dtype == np.bool_
-    assert truncated.n_passes_.shape == truncated.converged_.shape == (4,)
-    assert not truncated.converged_[2]
-    assert truncated.n_passes_[2] == 3
-    assert np.all(truncated.n_passes_ <= 3)
+    assert truncated.n_passes.dtype == np.int64
+    assert truncated.converged.dtype == np.bool_
+    assert truncated.n_passes.shape == truncated.converged.shape == (4,)
+    assert not truncated.converged[2]
+    assert truncated.n_passes[2] == 3
+    assert np.all(truncated.n_passes <= 3)
 
     full = SLIM(max_iter=GENEROUS, **PARAMS).fit(ill_conditioned)
-    assert full.converged_.all()
-    assert np.all(full.n_passes_ <= GENEROUS)
-    assert full.n_passes_[2] > 3
+    assert full.converged.all()
+    assert np.all(full.n_passes <= GENEROUS)
+    assert full.n_passes[2] > 3
 
 
 def test_truncated_and_converged_weights_differ(ill_conditioned):

@@ -1,14 +1,14 @@
-"""Type stubs for the compiled Rust extension ``fastslim._slim_rs``."""
+"""Type stubs for the compiled Rust extension ``fastslim.native``."""
 
 import numpy as np
 import numpy.typing as npt
 
-_Indices = npt.NDArray[np.int32] | npt.NDArray[np.int64]
+Indices = npt.NDArray[np.int32] | npt.NDArray[np.int64]
 
 def solve_slim(
     data: npt.NDArray[np.float64],
-    indices: _Indices,
-    indptr: _Indices,
+    indices: Indices,
+    indptr: Indices,
     n_rows: int,
     n_cols: int,
     lambd: float = ...,

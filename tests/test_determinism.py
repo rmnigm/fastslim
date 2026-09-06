@@ -5,7 +5,7 @@ from __future__ import annotations
 import fastslim
 import numpy as np
 import pytest
-from fastslim import _slim_rs
+from fastslim import native
 
 PARAMS = {"lambd": 0.4, "beta": 0.4, "tol": 1e-10, "max_iter": 1000}
 
@@ -36,7 +36,7 @@ def test_int32_and_int64_index_arrays_agree(make_binary):
     n_rows, n_cols = X.shape
 
     results = [
-        _slim_rs.solve_slim(
+        native.solve_slim(
             data=X.data,
             indices=X.indices.astype(dtype),
             indptr=X.indptr.astype(dtype),
@@ -55,7 +55,7 @@ def test_int32_and_int64_index_arrays_agree(make_binary):
 def test_solver_returns_the_documented_csc_layout(make_binary):
     """Segment ``i`` of the output holds the neighbours of target item ``i``."""
     X = make_binary(n_users=120, n_items=25, density=0.15, seed=8)
-    indptr, indices, data, n_passes, converged = _slim_rs.solve_slim(
+    indptr, indices, data, n_passes, converged = native.solve_slim(
         data=X.data,
         indices=X.indices,
         indptr=X.indptr,

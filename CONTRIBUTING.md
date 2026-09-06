@@ -34,16 +34,16 @@ uv sync --group bench   # implicit, h5py, rich, tqdm on top of the dev group
 | `src/lib.rs` | The pyo3 bindings. Validates and converts, then calls `solve_slim_csr`; no numerics |
 | `src/testing.rs` | Test-only helpers (`csr_from_dense`, `random_binary`) |
 | `src/gram/tests.rs`, `src/solver/tests.rs` | The Rust unit tests for the module next to them |
-| `python/fastslim/_api.py` | `fit`, `predict`, `recommend` and the single call site of the extension (`_solve`) |
-| `python/fastslim/_validation.py` | Input and hyperparameter checks shared by the functional API and the estimator |
+| `python/fastslim/api.py` | `fit`, `predict`, `recommend` and the single call site of the extension (`solve`) |
+| `python/fastslim/validation.py` | Input and hyperparameter checks shared by the functional API and the estimator |
 | `python/fastslim/estimator.py` | The `SLIM` class and `NotFittedError` |
 | `python/fastslim/metrics.py` | `precision_at_k`, `recall_at_k`, `ndcg_at_k` |
-| `python/fastslim/_slim_rs.pyi` | Stubs for the compiled module — keep in sync with `src/lib.rs` |
+| `python/fastslim/native.pyi` | Stubs for the compiled module — keep in sync with `src/lib.rs` |
 | `tests/` | The Python suite, plus `conftest.py` with a reference solver and a KKT checker |
 | `benchmarks/benchmark.py` | The benchmark CLI |
 
 Keep the numerics in `gram.rs` and `solver.rs` and the conversions in `lib.rs`. On the
-Python side, everything that talks to the extension goes through `_api._solve`, so a
+Python side, everything that talks to the extension goes through `api.solve`, so a
 change to the binding's return tuple has one place to land.
 
 ## Tests

@@ -95,4 +95,4 @@ def test_estimator_reproduces_the_functional_pipeline(movielens_split):
     train, _ = movielens_split
     model = fastslim.SLIM(**FIT_PARAMS).fit(train)
     expected = fastslim.fit(train, **FIT_PARAMS)
-    np.testing.assert_array_equal(model.weights_.data, expected.data)
+    np.testing.assert_array_equal(model.weights.data, expected.data)

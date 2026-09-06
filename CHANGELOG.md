@@ -33,7 +33,7 @@ evaluation API, real input validation, and published wheels.
   non-finite value, or an out-of-range hyperparameter raises `ValueError`; a
   hyperparameter of the wrong type (`max_iter=1.5`, `max_iter=True`) raises `TypeError`.
   0.1.x accepted these and returned nonsense or aborted.
-- **The private extension API changed.** `fastslim._slim_rs.solve_slim` now takes the
+- **The private extension API changed.** `fastslim.native.solve_slim` now takes the
   CSR arrays as keyword arguments and returns `(indptr, indices, data, n_passes,
   converged)`: `W` in CSC layout plus per-item pass counts and convergence flags. It is
   private; call `fastslim.fit`.
@@ -48,19 +48,19 @@ evaluation API, real input validation, and published wheels.
   items) and `fastslim.recommend` (top-`k` item ids, ranked best first, with
   deterministic tie-breaking and a `batch_size` that genuinely bounds peak memory).
 - `fastslim.SLIM`, a scikit-learn-flavoured estimator (`fit`, `predict`, `recommend`,
-  `get_params`, `set_params`, `weights_`, `n_items_`, `n_passes_`, `converged_`,
+  `get_params`, `set_params`, `weights`, `n_items`, `n_passes`, `converged`,
   `__repr__`) that does not depend on scikit-learn, plus `fastslim.NotFittedError`.
 - `fastslim.metrics` with `precision_at_k`, `recall_at_k` and `ndcg_at_k`, accepting
   either a score array from `predict` or a ranked-id array from `recommend`, and
   skipping users with no held-out items instead of scoring them zero.
 - `fastslim.ConvergenceWarning`, emitted by `fit` and `SLIM.fit` when some items exhaust
-  `max_iter` before reaching `tol`, and the per-item `n_passes_` / `converged_`
+  `max_iter` before reaching `tol`, and the per-item `n_passes` / `converged`
   diagnostics on the estimator.
 - A `tol` parameter on `fit`: the stopping tolerance was hard-coded in 0.1.x.
 - Input flexibility: any SciPy sparse format, sparse arrays, dense `ndarray`s and nested
   sequences are accepted, `int32` and `int64` index arrays are consumed as-is, and the
   caller's matrix is never mutated.
-- Type stubs (`_slim_rs.pyi`) and a `py.typed` marker, so `fit`'s signature and `W`'s
+- Type stubs (`native.pyi`) and a `py.typed` marker, so `fit`'s signature and `W`'s
   layout are visible to type checkers.
 - `fastslim.__version__`, single-sourced from `Cargo.toml` through maturin.
 - A test suite: 183 Python tests (property-based tests included, plus a MovieLens

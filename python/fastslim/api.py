@@ -9,15 +9,15 @@ from typing import Any
 import numpy as np
 from scipy import sparse
 
-from ._slim_rs import solve_slim as _solve_slim
-from ._validation import check_integer, check_interaction_matrix, check_params
+from .native import solve_slim
+from .validation import check_integer, check_interaction_matrix, check_params
 
 __all__ = ["ConvergenceWarning", "fit", "predict", "recommend"]
 
-_SPARRAY: Any = getattr(sparse, "sparray", ())
+SPARRAY: Any = getattr(sparse, "sparray", ())
 
 
-def _solve(
+def solve(
     matrix: Any,
     lambd: float,
     beta: float,
@@ -35,7 +35,7 @@ def _solve(
     arrays describe ``W`` in CSC layout and the last two are per-item solver
     diagnostics (``int64`` passes used, ``bool`` converged flag).
     """
-    return _solve_slim(
+    return solve_slim(
         data=matrix.data,
         indices=matrix.indices,
         indptr=matrix.indptr,
@@ -54,11 +54,11 @@ class ConvergenceWarning(UserWarning):
 
     Their weights are the feasible iterate at cut-off rather than the exact
     optimum.  Raise ``max_iter``, or raise ``beta`` to improve conditioning;
-    ``SLIM(...).fit(X).converged_`` tells which items are affected.
+    ``SLIM(...).fit(X).converged`` tells which items are affected.
     """
 
 
-def _fit_impl(
+def fit_with_diagnostics(
     interaction_matrix: Any,
     lambd: float,
     beta: float,
@@ -78,7 +78,7 @@ def _fit_impl(
     matrix, is_sparse_array = check_interaction_matrix(interaction_matrix)
     n_items = matrix.shape[1]
 
-    indptr, indices, data, n_passes, converged = _solve(
+    indptr, indices, data, n_passes, converged = solve(
         matrix, lambd, beta, max_iter, tol, n_threads
     )
 
@@ -88,7 +88,7 @@ def _fit_impl(
             f"{n_bad} of {n_items} items did not converge within "
             f"max_iter={max_iter} passes (tol={tol}); the returned weights are "
             "a truncated solution. Increase max_iter, or increase beta to "
-            "improve conditioning. SLIM(...).fit(X).converged_ reports which "
+            "improve conditioning. SLIM(...).fit(X).converged reports which "
             "items are affected; silence this with "
             "warnings.filterwarnings('ignore', category=fastslim.ConvergenceWarning).",
             ConvergenceWarning,
@@ -197,11 +197,13 @@ def fit(
     >>> bool(np.all(W.diagonal() == 0))
     True
     """
-    weights, _, _ = _fit_impl(interaction_matrix, lambd, beta, max_iter, tol, n_threads)
+    weights, _, _ = fit_with_diagnostics(
+        interaction_matrix, lambd, beta, max_iter, tol, n_threads
+    )
     return weights
 
 
-def _as_weights(weights: Any) -> Any:
+def as_weights(weights: Any) -> Any:
     """Return ``weights`` as a CSR matrix or a 2-D dense float64 array."""
     if sparse.issparse(weights):
         if weights.ndim != 2:
@@ -215,7 +217,7 @@ def _as_weights(weights: Any) -> Any:
     return dense
 
 
-def _prepare_history(user_history: Any, n_items: int) -> tuple[Any, bool]:
+def prepare_history(user_history: Any, n_items: int) -> tuple[Any, bool]:
     """Return ``(history, is_single_user)`` with ``history`` always 2-D.
 
     A 1-D input -- dense or a 1-D sparse array -- describes one user, and so
@@ -226,7 +228,7 @@ def _prepare_history(user_history: Any, n_items: int) -> tuple[Any, bool]:
     """
     if sparse.issparse(user_history):
         single = user_history.ndim == 1 or (
-            not isinstance(user_history, _SPARRAY) and user_history.shape[0] == 1
+            not isinstance(user_history, SPARRAY) and user_history.shape[0] == 1
         )
         history = user_history
         if history.ndim == 1:
@@ -255,7 +257,7 @@ def _prepare_history(user_history: Any, n_items: int) -> tuple[Any, bool]:
     return history, single
 
 
-def _mask_seen(scores: np.ndarray, history: Any) -> None:
+def mask_seen(scores: np.ndarray, history: Any) -> None:
     """Set the score of every nonzero history entry to ``-inf``, in place."""
     if sparse.issparse(history):
         if history.nnz == 0:
@@ -267,17 +269,17 @@ def _mask_seen(scores: np.ndarray, history: Any) -> None:
         scores[history != 0] = -np.inf
 
 
-def _score_chunk(history: Any, weights: Any, exclude_seen: bool) -> np.ndarray:
+def score_chunk(history: Any, weights: Any, exclude_seen: bool) -> np.ndarray:
     """Dense ``float64`` scores for one slice of users."""
     product = history @ weights
     scores = product.toarray() if sparse.issparse(product) else np.asarray(product)
     scores = scores.astype(np.float64, copy=False)
     if exclude_seen:
-        _mask_seen(scores, history)
+        mask_seen(scores, history)
     return scores
 
 
-def _chunks(n_rows: int, batch_size: int | None) -> Iterator[tuple[int, int]]:
+def chunks(n_rows: int, batch_size: int | None) -> Iterator[tuple[int, int]]:
     if batch_size is None:
         yield 0, n_rows
         return
@@ -342,12 +344,12 @@ def predict(
         ``float64`` scores of shape ``(n_items,)`` for a single history, or
         ``(n_users, n_items)`` for a batch.
     """
-    weight_matrix = _as_weights(weights)
-    history, single = _prepare_history(user_history, weight_matrix.shape[0])
+    weight_matrix = as_weights(weights)
+    history, single = prepare_history(user_history, weight_matrix.shape[0])
     n_users = history.shape[0]
     scores = np.empty((n_users, weight_matrix.shape[1]), dtype=np.float64)
-    for start, stop in _chunks(n_users, batch_size):
-        scores[start:stop] = _score_chunk(
+    for start, stop in chunks(n_users, batch_size):
+        scores[start:stop] = score_chunk(
             history[start:stop], weight_matrix, exclude_seen
         )
     return scores[0] if single else scores
@@ -384,13 +386,13 @@ def recommend(
         ``int64`` item indices sorted by descending score, of shape ``(k,)``
         for a single history or ``(n_users, k)`` for a batch.
     """
-    weight_matrix = _as_weights(weights)
-    history, single = _prepare_history(user_history, weight_matrix.shape[0])
+    weight_matrix = as_weights(weights)
+    history, single = prepare_history(user_history, weight_matrix.shape[0])
     n_items = weight_matrix.shape[1]
     k = min(check_integer(k, "k", 1), n_items)
     n_users = history.shape[0]
     top = np.empty((n_users, k), dtype=np.int64)
-    for start, stop in _chunks(n_users, batch_size):
-        scores = _score_chunk(history[start:stop], weight_matrix, exclude_seen)
+    for start, stop in chunks(n_users, batch_size):
+        scores = score_chunk(history[start:stop], weight_matrix, exclude_seen)
         top[start:stop] = top_k_from_scores(scores, k)
     return top[0] if single else top

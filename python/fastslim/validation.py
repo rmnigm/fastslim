@@ -22,7 +22,7 @@ __all__ = [
 
 # ``sparse.sparray`` only exists on scipy >= 1.11; ``isinstance(x, ())`` is
 # always False, which is the right answer on older versions.
-_SPARRAY: Any = getattr(sparse, "sparray", ())
+SPARRAY: Any = getattr(sparse, "sparray", ())
 
 
 def check_integer(value: Any, name: str, minimum: int) -> int:
@@ -72,13 +72,13 @@ def check_params(
     )
 
 
-def _locate(csr: sparse.csr_matrix, position: int) -> tuple[int, int]:
+def locate(csr: sparse.csr_matrix, position: int) -> tuple[int, int]:
     """Map an offset into ``csr.data`` back to its ``(row, column)``."""
     row = int(np.searchsorted(csr.indptr, position, side="right") - 1)
     return row, int(csr.indices[position])
 
 
-def _check_values(csr: sparse.csr_matrix, name: str) -> None:
+def check_values(csr: sparse.csr_matrix, name: str) -> None:
     """Reject non-finite or negative stored values, naming the guilty entry."""
     data = csr.data
     if data.size == 0:
@@ -86,7 +86,7 @@ def _check_values(csr: sparse.csr_matrix, name: str) -> None:
     bad = ~np.isfinite(data)
     if bad.any():
         position = int(np.flatnonzero(bad)[0])
-        row, col = _locate(csr, position)
+        row, col = locate(csr, position)
         raise ValueError(
             f"{name} must contain only finite values, but the entry at "
             f"row {row}, column {col} is {data[position]}"
@@ -94,7 +94,7 @@ def _check_values(csr: sparse.csr_matrix, name: str) -> None:
     negative = data < 0
     if negative.any():
         position = int(np.flatnonzero(negative)[0])
-        row, col = _locate(csr, position)
+        row, col = locate(csr, position)
         raise ValueError(
             f"{name} must be non-negative, but the entry at "
             f"row {row}, column {col} is {data[position]}"
@@ -120,7 +120,7 @@ def check_interaction_matrix(
         Whether the input was a scipy *sparse array* (as opposed to a sparse
         matrix or a dense input).  Callers use this to mirror the input type.
     """
-    is_sparse_array = isinstance(matrix, _SPARRAY)
+    is_sparse_array = isinstance(matrix, SPARRAY)
 
     if sparse.issparse(matrix):
         if matrix.ndim != 2:
@@ -144,7 +144,7 @@ def check_interaction_matrix(
     if csr.dtype != np.float64:
         csr, owned = csr.astype(np.float64), True
 
-    _check_values(csr, name)
+    check_values(csr, name)
 
     if not csr.has_canonical_format:
         # ``sum_duplicates`` sorts as a side effect, so this covers both

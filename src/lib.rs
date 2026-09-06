@@ -129,7 +129,7 @@ fn solve_slim<'py>(
 }
 
 #[pymodule]
-fn _slim_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(solve_slim, m)?)?;
     Ok(())
 }

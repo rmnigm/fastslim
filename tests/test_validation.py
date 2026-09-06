@@ -5,13 +5,13 @@ from __future__ import annotations
 import fastslim
 import numpy as np
 import pytest
-from fastslim import SLIM, _slim_rs
+from fastslim import SLIM, native
 from scipy import sparse
 
 GOOD = sparse.csr_matrix(np.array([[1.0, 1.0, 0.0], [0.0, 1.0, 1.0]]))
 
 
-def _with_value(value: float) -> sparse.csr_matrix:
+def with_value(value: float) -> sparse.csr_matrix:
     X = sparse.csr_matrix(np.array([[1.0, 1.0, 0.0], [0.0, 1.0, 1.0]]))
     X.data[1] = value
     return X
@@ -28,7 +28,7 @@ def _with_value(value: float) -> sparse.csr_matrix:
 )
 def test_bad_data_values(value, message):
     with pytest.raises(ValueError, match=message) as excinfo:
-        fastslim.fit(_with_value(value))
+        fastslim.fit(with_value(value))
     # The message points at the offending entry, not just at the array.
     assert "row 0, column 1" in str(excinfo.value)
 
@@ -136,7 +136,7 @@ def test_set_params_rejects_unknown_names():
 def test_binding_rejects_malformed_indptr():
     """The Rust layer keeps its own guardrails; check one reaches Python."""
     with pytest.raises(ValueError, match="indptr"):
-        _slim_rs.solve_slim(
+        native.solve_slim(
             data=np.array([1.0, 1.0]),
             indices=np.array([0, 1], dtype=np.int32),
             indptr=np.array([0, 2, 1], dtype=np.int32),

@@ -23,13 +23,13 @@ from typing import Any
 import numpy as np
 from scipy import sparse
 
-from ._api import top_k_from_scores
-from ._validation import check_integer
+from .api import top_k_from_scores
+from .validation import check_integer
 
 __all__ = ["ndcg_at_k", "precision_at_k", "recall_at_k"]
 
 
-def _as_test_csr(test_matrix: Any, n_users: int) -> sparse.csr_matrix:
+def as_test_csr(test_matrix: Any, n_users: int) -> sparse.csr_matrix:
     """Canonical CSR view of the held-out interactions."""
     if not sparse.issparse(test_matrix):
         test_matrix = sparse.csr_matrix(np.asarray(test_matrix))
@@ -50,7 +50,7 @@ def _as_test_csr(test_matrix: Any, n_users: int) -> sparse.csr_matrix:
     return test_csr
 
 
-def _top_k_items(predictions: Any, k: int, n_items: int | None) -> np.ndarray:
+def top_k_items(predictions: Any, k: int, n_items: int | None) -> np.ndarray:
     """Coerce scores or recommendations to a ``(n_users, k)`` index array."""
     predictions = np.asarray(predictions)
     if predictions.ndim != 2:
@@ -73,7 +73,7 @@ def _top_k_items(predictions: Any, k: int, n_items: int | None) -> np.ndarray:
     return top_k_from_scores(predictions, min(k, predictions.shape[1]))
 
 
-def _hits(top_k: np.ndarray, test_csr: sparse.csr_matrix) -> np.ndarray:
+def hits(top_k: np.ndarray, test_csr: sparse.csr_matrix) -> np.ndarray:
     """Boolean ``(n_users, k)`` array: is ``top_k[u, j]`` held out for user ``u``?
 
     Row-local column indices are made globally sortable by folding the user into
@@ -99,7 +99,7 @@ def _hits(top_k: np.ndarray, test_csr: sparse.csr_matrix) -> np.ndarray:
     return hit.reshape(n_users, k)
 
 
-def _prepare(
+def prepare(
     predictions: Any, test_matrix: Any, k: int
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Return ``(hits, n_test_per_user, has_test_items)`` for the given inputs."""
@@ -110,11 +110,11 @@ def _prepare(
             f"predictions must be 2-D, got a {predictions.ndim}-D array with "
             f"shape {predictions.shape}"
         )
-    test_csr = _as_test_csr(test_matrix, predictions.shape[0])
+    test_csr = as_test_csr(test_matrix, predictions.shape[0])
     scores_given = not np.issubdtype(predictions.dtype, np.integer)
-    top_k = _top_k_items(predictions, k, test_csr.shape[1] if scores_given else None)
+    top_k = top_k_items(predictions, k, test_csr.shape[1] if scores_given else None)
     n_test = np.diff(test_csr.indptr)
-    return _hits(top_k, test_csr), n_test, n_test > 0
+    return hits(top_k, test_csr), n_test, n_test > 0
 
 
 def precision_at_k(predictions: Any, test_matrix: Any, k: int = 10) -> float:
@@ -136,7 +136,7 @@ def precision_at_k(predictions: Any, test_matrix: Any, k: int = 10) -> float:
         Mean precision over users with at least one held-out item, or ``0.0``
         if there are none.
     """
-    hits, _, has_test = _prepare(predictions, test_matrix, k)
+    hits, _, has_test = prepare(predictions, test_matrix, k)
     if not has_test.any():
         return 0.0
     return float(np.mean(hits[has_test].sum(axis=1) / k))
@@ -160,7 +160,7 @@ def recall_at_k(predictions: Any, test_matrix: Any, k: int = 10) -> float:
         Mean recall over users with at least one held-out item, or ``0.0`` if
         there are none.
     """
-    hits, n_test, has_test = _prepare(predictions, test_matrix, k)
+    hits, n_test, has_test = prepare(predictions, test_matrix, k)
     if not has_test.any():
         return 0.0
     return float(np.mean(hits[has_test].sum(axis=1) / n_test[has_test]))
@@ -188,7 +188,7 @@ def ndcg_at_k(predictions: Any, test_matrix: Any, k: int = 10) -> float:
         Mean NDCG over users with at least one held-out item, or ``0.0`` if
         there are none.
     """
-    hits, n_test, has_test = _prepare(predictions, test_matrix, k)
+    hits, n_test, has_test = prepare(predictions, test_matrix, k)
     if not has_test.any():
         return 0.0
     discount = 1.0 / np.log2(np.arange(hits.shape[1]) + 2.0)

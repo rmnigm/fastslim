@@ -24,23 +24,23 @@ def test_fit_returns_self(tiny_matrix):
 def test_fit_matches_the_function(fitted):
     X, model = fitted
     expected = fastslim.fit(X, **PARAMS)
-    np.testing.assert_array_equal(model.weights_.indptr, expected.indptr)
-    np.testing.assert_array_equal(model.weights_.indices, expected.indices)
-    np.testing.assert_array_equal(model.weights_.data, expected.data)
-    assert model.n_items_ == X.shape[1]
-    assert isinstance(model.n_items_, int)
+    np.testing.assert_array_equal(model.weights.indptr, expected.indptr)
+    np.testing.assert_array_equal(model.weights.indices, expected.indices)
+    np.testing.assert_array_equal(model.weights.data, expected.data)
+    assert model.n_items == X.shape[1]
+    assert isinstance(model.n_items, int)
 
 
 def test_fit_sets_the_solver_diagnostic_attributes(fitted):
     """Placeholders until the extension reports per-item convergence."""
     _, model = fitted
-    assert hasattr(model, "n_passes_")
-    assert hasattr(model, "converged_")
+    assert hasattr(model, "n_passes")
+    assert hasattr(model, "converged")
 
 
 def test_predict_and_recommend_match_the_functions(fitted):
     X, model = fitted
-    W = model.weights_
+    W = model.weights
     np.testing.assert_array_equal(model.predict(X), fastslim.predict(W, X))
     np.testing.assert_array_equal(
         model.predict(X, exclude_seen=False),
@@ -57,7 +57,7 @@ def test_predict_and_recommend_match_the_functions(fitted):
 def test_y_is_ignored(tiny_matrix):
     with_y = SLIM(**PARAMS).fit(tiny_matrix, y=np.arange(tiny_matrix.shape[0]))
     without_y = SLIM(**PARAMS).fit(tiny_matrix)
-    np.testing.assert_array_equal(with_y.weights_.data, without_y.weights_.data)
+    np.testing.assert_array_equal(with_y.weights.data, without_y.weights.data)
 
 
 @pytest.mark.parametrize("method", ["predict", "recommend"])
@@ -95,7 +95,7 @@ def test_set_params_returns_self_and_takes_effect(tiny_matrix):
     assert model.set_params(lambd=2.0) is model
     assert model.lambd == 2.0
     model.fit(tiny_matrix)
-    assert model.weights_.nnz == fastslim.fit(tiny_matrix, lambd=2.0).nnz
+    assert model.weights.nnz == fastslim.fit(tiny_matrix, lambd=2.0).nnz
 
 
 def test_repr_shows_only_non_defaults():
@@ -109,14 +109,14 @@ def test_repr_shows_only_non_defaults():
 
 def test_refitting_replaces_the_weights(tiny_matrix):
     model = SLIM(lambd=0.1).fit(tiny_matrix)
-    sparse_fit = model.weights_.nnz
+    sparse_fit = model.weights.nnz
     model.set_params(lambd=1e6).fit(tiny_matrix)
     assert sparse_fit > 0
-    assert model.weights_.nnz == 0
+    assert model.weights.nnz == 0
 
 
 def test_weights_container_mirrors_the_input(tiny_matrix):
-    assert isinstance(SLIM().fit(tiny_matrix).weights_, sparse.csr_matrix)
+    assert isinstance(SLIM().fit(tiny_matrix).weights, sparse.csr_matrix)
     assert isinstance(
-        SLIM().fit(sparse.csr_array(tiny_matrix)).weights_, sparse.csr_array
+        SLIM().fit(sparse.csr_array(tiny_matrix)).weights, sparse.csr_array
     )

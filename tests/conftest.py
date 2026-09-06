@@ -116,7 +116,7 @@ def rng() -> np.random.Generator:
 def make_binary():
     """Factory for random binary user-item CSR matrices."""
 
-    def _make(
+    def make(
         n_users: int = 80,
         n_items: int = 30,
         density: float = 0.15,
@@ -126,14 +126,14 @@ def make_binary():
         dense = (generator.random((n_users, n_items)) < density).astype(np.float64)
         return sparse.csr_matrix(dense)
 
-    return _make
+    return make
 
 
 @pytest.fixture
 def make_weighted():
     """Factory for random non-negative float user-item CSR matrices."""
 
-    def _make(
+    def make(
         n_users: int = 80,
         n_items: int = 30,
         density: float = 0.15,
@@ -145,7 +145,7 @@ def make_weighted():
         values = generator.uniform(0.5, high, size=mask.shape)
         return sparse.csr_matrix(np.where(mask, values, 0.0))
 
-    return _make
+    return make
 
 
 @pytest.fixture

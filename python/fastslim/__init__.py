@@ -9,10 +9,10 @@
 array([2])
 """
 
-from importlib import metadata as _metadata
+from importlib import metadata as metadata
 
 from . import metrics
-from ._api import ConvergenceWarning, fit, predict, recommend
+from .api import ConvergenceWarning, fit, predict, recommend
 from .estimator import SLIM, NotFittedError
 
 __all__ = [
@@ -27,6 +27,6 @@ __all__ = [
 ]
 
 try:
-    __version__ = _metadata.version("fastslim")
-except _metadata.PackageNotFoundError:  # pragma: no cover - source tree fallback
+    __version__ = metadata.version("fastslim")
+except metadata.PackageNotFoundError:  # pragma: no cover - source tree fallback
     __version__ = "0.0.0+unknown"

@@ -51,7 +51,7 @@ except ImportError:  # pragma: no cover - the bench group is optional
     AlternatingLeastSquares = get_movielens = train_test_split = None
 
 # ru_maxrss is bytes on macOS and kibibytes on Linux.
-_RSS_SCALE = 1.0 if sys.platform == "darwin" else 1024.0
+RSS_SCALE = 1.0 if sys.platform == "darwin" else 1024.0
 
 SCORING_BATCH = 1000
 
@@ -60,7 +60,7 @@ def peak_rss_mb() -> float:
     """Peak resident set size of this process so far, in MiB (0 if unknown)."""
     if resource is None:
         return 0.0
-    return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * _RSS_SCALE / 1024**2
+    return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * RSS_SCALE / 1024**2
 
 
 @dataclass
@@ -204,12 +204,12 @@ def run_slim(
         # Truncation is reported as a table row instead of a warning.
         warnings.simplefilter("ignore", fastslim.ConvergenceWarning)
         model.fit(train)
-    weights = model.weights_
+    weights = model.weights
 
     with reporter.step("Scoring SLIM"):
         top = fastslim.recommend(weights, train, k=args.k, batch_size=SCORING_BATCH)
 
-    n_unconverged = int(np.count_nonzero(~model.converged_))
+    n_unconverged = int(np.count_nonzero(~model.converged))
     return Result(
         name="fastslim SLIM",
         fit_seconds=timing["seconds"],
@@ -217,8 +217,8 @@ def run_slim(
         model_size=f"{weights.nnz:,} nonzeros",
         scores=score_all(top, test, args.k),
         extra={
-            "Items hitting max_iter": f"{n_unconverged:,} / {model.n_items_:,}",
-            "Median passes per item": f"{np.median(model.n_passes_):.0f}",
+            "Items hitting max_iter": f"{n_unconverged:,} / {model.n_items:,}",
+            "Median passes per item": f"{np.median(model.n_passes):.0f}",
         },
     )
 

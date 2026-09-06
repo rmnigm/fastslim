@@ -2,8 +2,8 @@
 
 A thin, scikit-learn-flavoured wrapper around the functional API.  It follows
 the usual conventions -- constructor stores hyperparameters untouched,
-validation happens in ``fit``, learned state lives in trailing-underscore
-attributes -- without importing scikit-learn.
+validation happens in ``fit``, learned state is set by ``fit`` -- without
+importing scikit-learn.
 """
 
 from __future__ import annotations
@@ -13,12 +13,12 @@ from typing import Any
 import numpy as np
 from scipy import sparse
 
-from . import _api
+from . import api
 
 __all__ = ["NotFittedError", "SLIM"]
 
-_PARAM_NAMES = ("lambd", "beta", "max_iter", "tol", "n_threads")
-_DEFAULTS: dict[str, Any] = {
+PARAM_NAMES = ("lambd", "beta", "max_iter", "tol", "n_threads")
+DEFAULTS: dict[str, Any] = {
     "lambd": 0.5,
     "beta": 0.5,
     "max_iter": 1000,
@@ -74,15 +74,15 @@ class SLIM:
 
     Attributes
     ----------
-    weights_ : scipy.sparse.csr_matrix
+    weights : scipy.sparse.csr_matrix
         Item-item weights, shape ``(n_items, n_items)``, available after
         ``fit``.
-    n_items_ : int
+    n_items : int
         Number of items seen during ``fit``.
-    n_passes_ : numpy.ndarray
+    n_passes : numpy.ndarray
         ``int64`` array of shape ``(n_items,)``: coordinate-descent passes
         actually used for each item (full and active-set passes both count).
-    converged_ : numpy.ndarray
+    converged : numpy.ndarray
         ``bool`` array of shape ``(n_items,)``: whether each item reached
         ``tol`` before running out of ``max_iter``.  Items with no candidate
         neighbours count as converged in zero passes.
@@ -94,7 +94,7 @@ class SLIM:
     >>> from fastslim import SLIM
     >>> X = sparse.csr_matrix(np.array([[1, 1, 0], [1, 1, 1], [0, 1, 1]]))
     >>> model = SLIM(lambd=0.1, beta=0.1).fit(X)
-    >>> model.n_items_
+    >>> model.n_items
     3
     >>> model.recommend(X[0], k=1).shape
     (1,)
@@ -124,15 +124,15 @@ class SLIM:
             estimators, so it makes no difference.
         """
         del deep
-        return {name: getattr(self, name) for name in _PARAM_NAMES}
+        return {name: getattr(self, name) for name in PARAM_NAMES}
 
     def set_params(self, **params: Any) -> SLIM:
         """Set hyperparameters and return ``self``."""
         for name, value in params.items():
-            if name not in _PARAM_NAMES:
+            if name not in PARAM_NAMES:
                 raise ValueError(
                     f"invalid parameter {name!r} for SLIM; "
-                    f"valid parameters are {', '.join(_PARAM_NAMES)}"
+                    f"valid parameters are {', '.join(PARAM_NAMES)}"
                 )
             setattr(self, name, value)
         return self
@@ -156,17 +156,17 @@ class SLIM:
         -----
         ConvergenceWarning
             If some items exhausted ``max_iter`` before reaching ``tol``; see
-            :attr:`converged_` for which ones.
+            :attr:`converged` for which ones.
         """
         del y
-        self.weights_, self.n_passes_, self.converged_ = _api._fit_impl(
+        self.weights, self.n_passes, self.converged = api.fit_with_diagnostics(
             X, self.lambd, self.beta, self.max_iter, self.tol, self.n_threads
         )
-        self.n_items_ = int(self.weights_.shape[0])
+        self.n_items = int(self.weights.shape[0])
         return self
 
-    def _weights(self) -> sparse.csr_matrix:
-        weights = getattr(self, "weights_", None)
+    def fitted_weights(self) -> sparse.csr_matrix:
+        weights = getattr(self, "weights", None)
         if weights is None:
             raise NotFittedError(
                 "this SLIM instance is not fitted yet; call fit() with an "
@@ -182,8 +182,8 @@ class SLIM:
         batch_size: int | None = None,
     ) -> np.ndarray:
         """Score every item for one user or a batch; see :func:`fastslim.predict`."""
-        return _api.predict(
-            self._weights(),
+        return api.predict(
+            self.fitted_weights(),
             X_history,
             exclude_seen=exclude_seen,
             batch_size=batch_size,
@@ -198,8 +198,8 @@ class SLIM:
         batch_size: int | None = None,
     ) -> np.ndarray:
         """Top-``k`` items for one user or a batch; see :func:`fastslim.recommend`."""
-        return _api.recommend(
-            self._weights(),
+        return api.recommend(
+            self.fitted_weights(),
             X_history,
             k=k,
             exclude_seen=exclude_seen,
@@ -214,7 +214,7 @@ class SLIM:
         """
         changed = [
             f"{name}={getattr(self, name)!r}"
-            for name in _PARAM_NAMES
-            if getattr(self, name) != _DEFAULTS[name]
+            for name in PARAM_NAMES
+            if getattr(self, name) != DEFAULTS[name]
         ]
         return f"SLIM({', '.join(changed)})"

@@ -57,7 +57,7 @@ def test_dtypes_agree(baseline, dtype):
     assert np.allclose(to_dense(fastslim.fit(X, **PARAMS)), baseline)
 
 
-def _messy_csr() -> sparse.csr_matrix:
+def messy_csr() -> sparse.csr_matrix:
     """A deliberately non-canonical CSR spelling of ``DENSE``.
 
     Row 0 of ``DENSE`` is ``[1, 1, 0, 0]``; here column 1 is split into
@@ -82,7 +82,7 @@ def _messy_csr() -> sparse.csr_matrix:
 
 
 def test_duplicates_unsorted_indices_and_explicit_zeros(baseline):
-    messy = _messy_csr()
+    messy = messy_csr()
     assert not messy.has_canonical_format
     np.testing.assert_allclose(to_dense(messy), DENSE)
 
@@ -91,7 +91,7 @@ def test_duplicates_unsorted_indices_and_explicit_zeros(baseline):
 
 def test_input_is_not_mutated():
     """Canonicalisation must never write back into the caller's arrays."""
-    messy = _messy_csr()
+    messy = messy_csr()
     data = messy.data.copy()
     indices = messy.indices.copy()
     indptr = messy.indptr.copy()
