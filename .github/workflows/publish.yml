@@ -52,7 +52,7 @@ jobs:
           "$PY" -m pip install --upgrade pip
           "$PY" -m pip install dist/*.whl
           "$PY" -c "import fastslim, numpy, scipy; print(fastslim.__version__)"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: wheel-linux-${{ matrix.target }}
           path: dist/*.whl
@@ -85,7 +85,7 @@ jobs:
           "$PY" -m pip install --upgrade pip
           "$PY" -m pip install dist/*.whl
           "$PY" -c "import fastslim, numpy, scipy; print(fastslim.__version__)"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: wheel-macos-universal2
           path: dist/*.whl
@@ -116,7 +116,7 @@ jobs:
           "$PY" -m pip install --upgrade pip
           "$PY" -m pip install dist/*.whl
           "$PY" -c "import fastslim, numpy, scipy; print(fastslim.__version__)"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: wheel-windows-x64
           path: dist/*.whl
@@ -132,7 +132,7 @@ jobs:
         with:
           command: sdist
           args: --out dist
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: sdist
           path: dist/*.tar.gz
