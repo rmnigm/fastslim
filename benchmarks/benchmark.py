@@ -43,6 +43,13 @@ try:
 except ImportError:  # pragma: no cover - rich is optional
     Console = Progress = SpinnerColumn = TextColumn = Table = None
 
+try:
+    from implicit.als import AlternatingLeastSquares
+    from implicit.datasets.movielens import get_movielens
+    from implicit.evaluation import train_test_split
+except ImportError:  # pragma: no cover - the bench group is optional
+    AlternatingLeastSquares = get_movielens = train_test_split = None
+
 # ru_maxrss is bytes on macOS and kibibytes on Linux.
 _RSS_SCALE = 1.0 if sys.platform == "darwin" else 1024.0
 
@@ -126,8 +133,6 @@ def load_dataset(name: str, seed: int) -> sparse.csr_matrix:
         matrix.data[:] = 1.0
         return matrix
 
-    from implicit.datasets.movielens import get_movielens
-
     _, ratings = get_movielens(name)
     # get_movielens returns (items x users); implicit feedback means "rated at
     # all", so binarise rather than keeping the star ratings.
@@ -138,9 +143,7 @@ def split(
     matrix: sparse.csr_matrix, seed: int
 ) -> tuple[sparse.csr_matrix, sparse.csr_matrix]:
     """80/20 split, using implicit's splitter when it is available."""
-    try:
-        from implicit.evaluation import train_test_split
-    except ImportError:
+    if train_test_split is None:
         rng = np.random.default_rng(seed)
         coo = matrix.tocoo()
         keep = rng.random(coo.nnz) < 0.8
@@ -226,8 +229,6 @@ def run_als(
     args: argparse.Namespace,
     reporter: Reporter,
 ) -> Result:
-    from implicit.als import AlternatingLeastSquares
-
     model = AlternatingLeastSquares(
         factors=args.factors,
         regularization=0.01,
@@ -352,7 +353,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Print a GitHub-flavoured markdown table on stdout",
     )
     parser.add_argument("--seed", type=int, default=42, help="Split and model seed")
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    missing = "install the 'bench' dependency group (uv sync --group bench)"
+    if args.dataset != "synthetic" and get_movielens is None:
+        parser.error(f"--dataset {args.dataset} needs implicit: {missing}")
+    if args.baseline == "als" and AlternatingLeastSquares is None:
+        parser.error(f"--baseline als needs implicit: {missing}")
+    return args
 
 
 def main(argv: list[str] | None = None) -> int:

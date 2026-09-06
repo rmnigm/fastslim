@@ -13,10 +13,9 @@ import numpy as np
 import pytest
 from fastslim import metrics
 
-pytest.importorskip("implicit", reason="install the 'bench' group for this test")
-
-from implicit.datasets.movielens import get_movielens  # noqa: E402
-from implicit.evaluation import train_test_split  # noqa: E402
+BENCH_GROUP = "install the 'bench' group for this test"
+movielens = pytest.importorskip("implicit.datasets.movielens", reason=BENCH_GROUP)
+evaluation = pytest.importorskip("implicit.evaluation", reason=BENCH_GROUP)
 
 # ``max_iter=50`` deliberately truncates the ill-conditioned popular items (it
 # is the setting the benchmark uses); the metrics below are what is guarded,
@@ -44,11 +43,13 @@ TOLERANCE = 0.01
 
 @pytest.fixture(scope="module")
 def movielens_split():
-    _, ratings = get_movielens("100k")
+    _, ratings = movielens.get_movielens("100k")
     # get_movielens returns (items x users); SLIM wants (users x items), and
     # implicit feedback means "rated at all", not "rated highly".
     user_item = (ratings.T.tocsr() > 0).astype(np.float64)
-    train, test = train_test_split(user_item, train_percentage=0.8, random_state=42)
+    train, test = evaluation.train_test_split(
+        user_item, train_percentage=0.8, random_state=42
+    )
     return train.tocsr(), test.tocsr()
 
 
