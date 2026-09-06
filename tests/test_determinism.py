@@ -1,79 +1,75 @@
-"""The solver promises bit-for-bit reproducibility, including across threads."""
-
 from __future__ import annotations
 
 import fastslim
 import numpy as np
 import pytest
+from conftest import random_matrix
 from fastslim import native
 
 PARAMS = {"lambd": 0.4, "beta": 0.4, "tol": 1e-10, "max_iter": 1000}
 
 
-def fingerprint(W) -> tuple[bytes, bytes, bytes]:
+def fingerprint(weights) -> tuple[bytes, bytes, bytes]:
     """Raw bytes of the three CSR arrays -- no tolerance, no rounding."""
-    return W.indptr.tobytes(), W.indices.tobytes(), W.data.tobytes()
+    return weights.indptr.tobytes(), weights.indices.tobytes(), weights.data.tobytes()
 
 
-def test_repeated_runs_are_identical(binary_matrix):
-    first = fastslim.fit(binary_matrix, **PARAMS)
-    for _ in range(3):
-        assert fingerprint(fastslim.fit(binary_matrix, **PARAMS)) == fingerprint(first)
-
-
-@pytest.mark.parametrize("n_threads", [1, 3, None])
-def test_thread_count_does_not_change_the_answer(make_binary, n_threads):
-    X = make_binary(n_users=400, n_items=60, density=0.1, seed=7)
-    reference = fastslim.fit(X, n_threads=1, **PARAMS)
-    assert fingerprint(fastslim.fit(X, n_threads=n_threads, **PARAMS)) == fingerprint(
-        reference
-    )
-
-
-def test_int32_and_int64_index_arrays_agree(make_binary):
-    """scipy picks the index dtype for us, so go straight to the binding."""
-    X = make_binary(n_users=120, n_items=25, density=0.15, seed=8)
-    n_rows, n_cols = X.shape
-
-    results = [
-        native.solve_slim(
-            data=X.data,
-            indices=X.indices.astype(dtype),
-            indptr=X.indptr.astype(dtype),
-            n_rows=n_rows,
-            n_cols=n_cols,
-            **PARAMS,
-        )
-        for dtype in (np.int32, np.int64)
-    ]
-
-    assert results[0][2].size > 0
-    for from_i32, from_i64 in zip(*results, strict=True):
-        assert from_i32.tobytes() == from_i64.tobytes()
-
-
-def test_solver_returns_the_documented_csc_layout(make_binary):
-    """Segment ``i`` of the output holds the neighbours of target item ``i``."""
-    X = make_binary(n_users=120, n_items=25, density=0.15, seed=8)
-    indptr, indices, data, n_passes, converged = native.solve_slim(
-        data=X.data,
-        indices=X.indices,
-        indptr=X.indptr,
-        n_rows=X.shape[0],
-        n_cols=X.shape[1],
+def solve(matrix, dtype=None):
+    """Call the extension directly, optionally recasting the index arrays."""
+    cast = (lambda a: a) if dtype is None else (lambda a: a.astype(dtype))
+    return native.solve_slim(
+        data=matrix.data,
+        indices=cast(matrix.indices),
+        indptr=cast(matrix.indptr),
+        n_rows=matrix.shape[0],
+        n_cols=matrix.shape[1],
         **PARAMS,
     )
 
-    assert indptr.dtype == np.int64
-    assert indices.dtype == np.int64
-    assert data.dtype == np.float64
-    assert n_passes.dtype == np.int64
-    assert converged.dtype == np.bool_
-    assert n_passes.shape == converged.shape == (X.shape[1],)
+
+def test_repeated_runs_are_identical(binary_matrix):
+    first = fingerprint(fastslim.fit(binary_matrix, **PARAMS))
+    for _ in range(3):
+        assert fingerprint(fastslim.fit(binary_matrix, **PARAMS)) == first
+
+
+@pytest.mark.parametrize("n_threads", [1, 3, None])
+def test_thread_count_does_not_change_the_answer(n_threads):
+    matrix = random_matrix(n_users=400, n_items=60, density=0.1, seed=7)
+    reference = fingerprint(fastslim.fit(matrix, n_threads=1, **PARAMS))
+    got = fingerprint(fastslim.fit(matrix, n_threads=n_threads, **PARAMS))
+    assert got == reference
+
+
+def test_int32_and_int64_index_arrays_agree():
+    """scipy picks the index dtype for us, so go straight to the binding."""
+    matrix = random_matrix(n_users=120, n_items=25, density=0.15, seed=8)
+    from_i32 = solve(matrix, np.int32)
+    from_i64 = solve(matrix, np.int64)
+
+    assert from_i32[2].size > 0
+    for i32, i64 in zip(from_i32, from_i64, strict=True):
+        assert i32.tobytes() == i64.tobytes()
+
+
+def test_solver_returns_the_documented_csc_layout():
+    """Segment ``i`` of the output holds the neighbours of target item ``i``."""
+    matrix = random_matrix(n_users=120, n_items=25, density=0.15, seed=8)
+    n_items = matrix.shape[1]
+    indptr, indices, data, n_passes, converged = solve(matrix)
+
+    assert (indptr.dtype, indices.dtype, data.dtype) == (
+        np.dtype(np.int64),
+        np.dtype(np.int64),
+        np.dtype(np.float64),
+    )
+    assert (n_passes.dtype, converged.dtype) == (np.dtype(np.int64), np.dtype(np.bool_))
+    assert n_passes.shape == converged.shape == (n_items,)
     assert converged.all()
     assert np.all(n_passes <= PARAMS["max_iter"])
-    assert indptr.shape == (X.shape[1] + 1,)
-    assert indptr[0] == 0 and indptr[-1] == data.size
+    assert indptr.shape == (n_items + 1,)
+    assert indptr[0] == 0
+    assert indptr[-1] == data.size
     assert np.all(data > 0)
     for target, (start, stop) in enumerate(zip(indptr[:-1], indptr[1:], strict=True)):
         neighbours = indices[start:stop]

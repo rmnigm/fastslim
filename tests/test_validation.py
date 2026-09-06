@@ -1,5 +1,3 @@
-"""Bad input must fail loudly, early, and with a message that names the problem."""
-
 from __future__ import annotations
 
 import fastslim
@@ -12,9 +10,10 @@ GOOD = sparse.csr_matrix(np.array([[1.0, 1.0, 0.0], [0.0, 1.0, 1.0]]))
 
 
 def with_value(value: float) -> sparse.csr_matrix:
-    X = sparse.csr_matrix(np.array([[1.0, 1.0, 0.0], [0.0, 1.0, 1.0]]))
-    X.data[1] = value
-    return X
+    """``GOOD`` with its second stored entry replaced by ``value``."""
+    matrix = GOOD.copy()
+    matrix.data[1] = value
+    return matrix
 
 
 @pytest.mark.parametrize(
@@ -26,10 +25,9 @@ def with_value(value: float) -> sparse.csr_matrix:
         (-1.0, "non-negative"),
     ],
 )
-def test_bad_data_values(value, message):
+def test_bad_data_values_name_the_offending_entry(value, message):
     with pytest.raises(ValueError, match=message) as excinfo:
         fastslim.fit(with_value(value))
-    # The message points at the offending entry, not just at the array.
     assert "row 0, column 1" in str(excinfo.value)
 
 
@@ -74,58 +72,58 @@ def test_bad_hyperparameters(kwargs, exc, message):
 
 
 @pytest.mark.parametrize(
-    ("kwargs", "exc"),
+    ("kwargs", "exc", "message"),
     [
-        ({"lambd": -1}, ValueError),
-        ({"max_iter": 1.5}, TypeError),
-        ({"n_threads": 0}, ValueError),
+        ({"lambd": -1}, ValueError, "lambd must be >= 0"),
+        ({"max_iter": 1.5}, TypeError, "max_iter must be an integer"),
+        ({"n_threads": 0}, ValueError, "n_threads must be >= 1"),
     ],
 )
-def test_estimator_validates_at_fit_time(kwargs, exc):
+def test_estimator_validates_at_fit_time(kwargs, exc, message):
     """sklearn convention: the constructor stores, ``fit`` checks."""
     name, value = next(iter(kwargs.items()))
     model = SLIM(**kwargs)
     assert model.get_params()[name] == value
-    with pytest.raises(exc):
+    with pytest.raises(exc, match=message):
         model.fit(GOOD)
 
 
 def test_numpy_scalar_hyperparameters_are_accepted():
-    W = fastslim.fit(
+    weights = fastslim.fit(
         GOOD,
         lambd=np.float32(0.5),
         beta=np.float64(0.5),
         max_iter=np.int64(10),
         n_threads=np.int32(1),
     )
-    assert W.shape == (3, 3)
-
-
-def test_predict_rejects_mismatched_history():
-    W = fastslim.fit(GOOD)
-    with pytest.raises(ValueError, match="items but weights describe"):
-        fastslim.predict(W, np.ones(5))
-
-
-def test_predict_rejects_3d_history():
-    W = fastslim.fit(GOOD)
-    with pytest.raises(ValueError, match="must be 1-D or 2-D"):
-        fastslim.predict(W, np.ones((2, 2, 3)))
+    assert weights.shape == (3, 3)
 
 
 @pytest.mark.parametrize(
-    ("kwargs", "exc"),
+    ("history", "message"),
     [
-        ({"k": 0}, ValueError),
-        ({"k": -1}, ValueError),
-        ({"k": 1.5}, TypeError),
-        ({"batch_size": 0}, ValueError),
+        (np.ones(5), "items but weights describe"),
+        (np.ones((2, 2, 3)), "must be 1-D or 2-D"),
+    ],
+    ids=["wrong_width", "3d"],
+)
+def test_predict_rejects_bad_history(history, message):
+    with pytest.raises(ValueError, match=message):
+        fastslim.predict(fastslim.fit(GOOD), history)
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "exc", "message"),
+    [
+        ({"k": 0}, ValueError, "k must be >= 1"),
+        ({"k": -1}, ValueError, "k must be >= 1"),
+        ({"k": 1.5}, TypeError, "k must be an integer"),
+        ({"batch_size": 0}, ValueError, "batch_size must be >= 1"),
     ],
 )
-def test_recommend_rejects_bad_k_and_batch_size(kwargs, exc):
-    W = fastslim.fit(GOOD)
-    with pytest.raises(exc):
-        fastslim.recommend(W, GOOD, **kwargs)
+def test_recommend_rejects_bad_k_and_batch_size(kwargs, exc, message):
+    with pytest.raises(exc, match=message):
+        fastslim.recommend(fastslim.fit(GOOD), GOOD, **kwargs)
 
 
 def test_set_params_rejects_unknown_names():

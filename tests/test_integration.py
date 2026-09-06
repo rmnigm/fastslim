@@ -1,11 +1,3 @@
-"""End-to-end quality check on MovieLens 100k.
-
-Marked ``slow`` because the first run downloads the dataset to
-``~/implicit_data`` (a few MB); afterwards the whole test takes about a second.
-Skipped entirely when ``implicit`` is not installed -- it is in the ``bench``
-dependency group, not ``dev``.
-"""
-
 from __future__ import annotations
 
 import fastslim
@@ -17,9 +9,8 @@ BENCH_GROUP = "install the 'bench' group for this test"
 movielens = pytest.importorskip("implicit.datasets.movielens", reason=BENCH_GROUP)
 evaluation = pytest.importorskip("implicit.evaluation", reason=BENCH_GROUP)
 
-# ``max_iter=50`` deliberately truncates the ill-conditioned popular items (it
-# is the setting the benchmark uses); the metrics below are what is guarded,
-# so the ConvergenceWarning that truncation raises is expected here.
+# max_iter=50 (the benchmark's setting) truncates the ill-conditioned popular
+# items on purpose, so the ConvergenceWarning is expected here.
 pytestmark = [
     pytest.mark.slow,
     pytest.mark.filterwarnings("ignore::fastslim.ConvergenceWarning"),
@@ -28,14 +19,8 @@ pytestmark = [
 K = 10
 FIT_PARAMS = {"lambd": 2.0, "beta": 2.0, "max_iter": 50}
 
-# Measured on 2026-09-05 with this exact split (implicit's train_test_split at
-# random_state=42, 80/20) and these hyperparameters:
-#
-#     precision@10 = 0.3391   recall@10 = 0.2236   ndcg@10 = 0.4069
-#
-# The thresholds below sit 0.01 under the measured values, which is far wider
-# than any run-to-run noise (there is none -- everything here is seeded) but
-# tight enough to catch a real regression in the solver or the metrics.
+# Measured values for this seeded split; the tolerance catches a real
+# regression without tripping on nothing.
 EXPECTED_RECALL = 0.2236
 EXPECTED_NDCG = 0.4069
 TOLERANCE = 0.01
@@ -43,9 +28,10 @@ TOLERANCE = 0.01
 
 @pytest.fixture(scope="module")
 def movielens_split():
+    """An 80/20 split of binarised MovieLens 100k, as (users x items) CSR."""
     _, ratings = movielens.get_movielens("100k")
-    # get_movielens returns (items x users); SLIM wants (users x items), and
-    # implicit feedback means "rated at all", not "rated highly".
+    # get_movielens returns (items x users), and implicit feedback means
+    # "rated at all", not "rated highly".
     user_item = (ratings.T.tocsr() > 0).astype(np.float64)
     train, test = evaluation.train_test_split(
         user_item, train_percentage=0.8, random_state=42
