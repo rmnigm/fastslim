@@ -38,9 +38,12 @@ def solve_slim(
     lambd, beta
         L1 and L2 penalties, both ``>= 0``.
     max_iter
-        Maximum coordinate-descent passes per item; ``0`` gives zero weights.
+        Maximum coordinate-descent passes per item, counting both full passes
+        and active-set passes; ``0`` gives zero weights.
     tol
-        Convergence tolerance on the largest weight change within a pass.
+        Convergence tolerance on the largest weight change within a pass.  An
+        item stops once a full pass moves no weight by ``tol`` or more, so
+        ``tol=0`` means exactly ``max_iter`` passes.
     n_threads
         Worker threads, or ``None`` for every available core.  Must be ``>= 1``.
 

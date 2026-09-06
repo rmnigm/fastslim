@@ -55,13 +55,19 @@ class SLIM:
     lambd : float, default=0.5
         L1 penalty; larger values give sparser ``W``.  Measured on the scale of
         the Gram matrix :math:`X^\top X`, i.e. co-occurrence counts for binary
-        data.
+        data: a neighbour :math:`k` of item :math:`i` can only enter the model
+        when :math:`P_{ik} \ge \lambda`.
     beta : float, default=0.5
-        L2 penalty; shrinks weights and makes the solution unique.
+        L2 penalty; shrinks weights and makes the solution unique.  It also
+        conditions the per-coordinate denominator :math:`P_{kk} + \beta`, so
+        raising it cuts the number of passes a fit needs.
     max_iter : int, default=100
-        Maximum coordinate-descent passes per item.
+        Maximum coordinate-descent passes per item; full passes and active-set
+        passes both count towards it.
     tol : float, default=1e-6
-        Convergence tolerance on the largest weight change within a pass.
+        Convergence tolerance on the largest weight change within a pass.  An
+        item is done once a full pass moves no weight by ``tol`` or more, so
+        ``tol=0`` means exactly ``max_iter`` passes.
     n_threads : int or None, default=None
         Worker threads; ``None`` uses every available core.  Results do not
         depend on this value.
@@ -74,10 +80,12 @@ class SLIM:
     n_items_ : int
         Number of items seen during ``fit``.
     n_passes_ : numpy.ndarray or None
-        Coordinate-descent passes actually used for each item.  ``None`` until
-        the solver reports it.
+        ``int64`` array of shape ``(n_items,)``: coordinate-descent passes
+        actually used for each item.  ``None`` until the solver reports it.
     converged_ : numpy.ndarray or None
-        Per-item convergence flags.  ``None`` until the solver reports it.
+        ``bool`` array of shape ``(n_items,)``: whether each item reached
+        ``tol`` before running out of ``max_iter``.  ``None`` until the solver
+        reports it.
 
     Examples
     --------
@@ -143,6 +151,12 @@ class SLIM:
         Returns
         -------
         self : SLIM
+
+        Warns
+        -----
+        ConvergenceWarning
+            If some items exhausted ``max_iter`` before reaching ``tol``; see
+            :attr:`converged_` for which ones.
         """
         del y
         self.weights_ = _api.fit(

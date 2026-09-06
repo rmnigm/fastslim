@@ -84,16 +84,22 @@ def fit(
         co-occurrence counts, so a useful ``lambd`` scales with how often items
         co-occur (single digits for MovieLens-sized data, not ``1e-4``).  A
         neighbour :math:`k` of item :math:`i` can only enter the model when
-        :math:`P_{ik} > \lambda`, so raising ``lambd`` prunes weights outright.
+        :math:`P_{ik} \ge \lambda`, so raising ``lambd`` prunes weights outright.
     beta : float, default=0.5
         L2 penalty, shrinks weights towards zero without pruning them.  It also
         regularises the per-coordinate denominator :math:`P_{kk} + \beta`, which
         keeps very popular items from dominating and makes the solution unique.
+        On count-scale data :math:`P_{kk}` can reach the thousands while
+        ``beta`` is a fraction; raising ``beta`` improves the conditioning and
+        so the number of passes a fit needs.
     max_iter : int, default=100
-        Maximum number of coordinate-descent passes per item.  ``0`` returns an
-        all-zero weight matrix.
+        Maximum number of coordinate-descent passes per item.  Full passes over
+        every candidate and passes over the active set both count towards it.
+        ``0`` returns an all-zero weight matrix.
     tol : float, default=1e-6
-        Convergence tolerance on the largest weight change within a pass.
+        Convergence tolerance on the largest weight change within a pass.  An
+        item is done once a full pass moves no weight by ``tol`` or more, so
+        ``tol=0`` means exactly ``max_iter`` passes.
     n_threads : int or None, default=None
         Worker threads.  ``None`` uses every available core.  The result is
         bit-for-bit identical regardless of this value.
@@ -114,6 +120,14 @@ def fit(
         hyperparameter is out of range.
     TypeError
         If a hyperparameter has the wrong type (e.g. ``max_iter=1.5``).
+
+    Warns
+    -----
+    ConvergenceWarning
+        If some items exhausted ``max_iter`` before a full pass came back
+        under ``tol``.  Their columns of ``W`` are a truncated solution:
+        still a usable model, but not the optimum.  Raise ``max_iter``, or
+        raise ``beta`` to improve the conditioning.
 
     Examples
     --------
