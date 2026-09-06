@@ -11,8 +11,8 @@ interaction matrix `X`, and scores users with a single sparse product `X @ W`. I
 of the strongest top-N recommenders that stays fully interpretable — every
 recommendation decomposes into "because you interacted with these items". `fastslim`
 implements it in Rust: the solver is **exact** (it satisfies the KKT conditions of the
-problem it documents, checked against an independent reference solver),
-**deterministic** (bit-identical output for any thread count) and **fast** (a MovieLens
+problem it documents), **deterministic** (bit-identical output for any thread count)
+and **fast** (a MovieLens
 1M fit in seconds), behind a **tiny Python API** — `fit`, `predict`, `recommend`, plus a
 scikit-learn-style estimator and three ranking metrics.
 

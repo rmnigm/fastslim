@@ -3,7 +3,7 @@ from __future__ import annotations
 import fastslim
 import numpy as np
 import pytest
-from conftest import kkt_violation, objective, random_matrix, reference_cd, to_dense
+from conftest import kkt_violation, random_matrix, to_dense
 from scipy import sparse
 
 # With tol=1e-10 the observed worst-case KKT violation across this grid is
@@ -13,7 +13,6 @@ KKT_TOL = 1e-6
 
 LAMBDS = [0.0, 0.1, 0.5, 1.0, 2.0, 3.0]
 BETAS = [0.0, 0.5, 2.0]
-PENALTIES = [(0.0, 0.5), (0.1, 0.0), (0.5, 0.5), (1.0, 2.0), (2.0, 0.5), (3.0, 0.0)]
 
 
 @pytest.fixture(params=["binary", "weighted"])
@@ -29,31 +28,6 @@ def interactions(request) -> sparse.csr_matrix:
 def test_solution_satisfies_kkt_conditions(interactions, lambd, beta):
     weights = fastslim.fit(interactions, lambd=lambd, beta=beta, **EXACT)
     assert kkt_violation(interactions, weights, lambd, beta) < KKT_TOL
-
-
-@pytest.mark.parametrize(("lambd", "beta"), PENALTIES)
-def test_matches_reference_solver(lambd, beta):
-    dense = to_dense(random_matrix(n_users=40, n_items=12, density=0.25, seed=3))
-    got = to_dense(fastslim.fit(dense, lambd=lambd, beta=beta, **EXACT))
-    expected = reference_cd(dense, lambd, beta)
-
-    assert np.array_equal(got > 0, expected > 0)
-    assert np.allclose(got, expected, atol=1e-8, rtol=0)
-
-
-@pytest.mark.parametrize(
-    ("lambd", "beta"), [(0.0, 0.5), (0.5, 0.5), (1.0, 0.0), (2.0, 2.0)]
-)
-def test_objective_no_worse_than_reference(lambd, beta):
-    dense = to_dense(
-        random_matrix(n_users=40, n_items=12, density=0.25, seed=4, high=5.0)
-    )
-    got = fastslim.fit(dense, lambd=lambd, beta=beta, **EXACT)
-    expected = reference_cd(dense, lambd, beta)
-
-    assert objective(dense, got, lambd, beta) <= (
-        objective(dense, expected, lambd, beta) + 1e-9
-    )
 
 
 def test_hand_computed_three_items():

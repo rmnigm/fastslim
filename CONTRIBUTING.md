@@ -39,7 +39,7 @@ uv sync --group bench   # implicit, h5py, rich, tqdm on top of the dev group
 | `python/fastslim/estimator.py` | The `SLIM` class and `NotFittedError` |
 | `python/fastslim/metrics.py` | `precision_at_k`, `recall_at_k`, `ndcg_at_k` |
 | `python/fastslim/native.pyi` | Stubs for the compiled module — keep in sync with `src/lib.rs` |
-| `tests/` | The Python suite, plus `conftest.py` with a reference solver and a KKT checker |
+| `tests/` | The Python suite, plus `conftest.py` with fixtures and a KKT checker |
 | `docs/algorithm.md`, `docs/api.md` | The correctness argument and the public API reference |
 | `benchmarks/benchmark.py` | The benchmark CLI |
 

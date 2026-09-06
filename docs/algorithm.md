@@ -293,8 +293,7 @@ that coordinate.)
 
 The test suite checks this end to end rather than trusting the derivation: at
 `tol=1e-10` the worst observed violation over a grid of $\lambda \in [0, 3]$ and
-$\beta \in \{0, 0.5, 2\}$, on both binary and weighted matrices, is about `2e-9`, and
-the solution matches a naive dense reference solver entrywise.
+$\beta \in \{0, 0.5, 2\}$, on both binary and weighted matrices, is about `2e-9`.
 
 ## 8. Building the Gram matrix, deterministically
 

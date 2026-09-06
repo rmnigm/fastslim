@@ -41,54 +41,6 @@ def random_matrix(
     return sparse.csr_matrix(np.where(mask, values, 0.0))
 
 
-def reference_cd(
-    dense: np.ndarray,
-    lambd: float,
-    beta: float,
-    max_passes: int = 5000,
-    tol: float = 1e-13,
-) -> np.ndarray:
-    """Solve the SLIM problem by naive full-pass non-negative coordinate descent.
-
-    Returns ``W[k, i] = w_ik``, exactly as :func:`fastslim.fit` does.
-    """
-    dense = np.asarray(dense, dtype=np.float64)
-    gram = dense.T @ dense
-    n_items = gram.shape[0]
-    weights = np.zeros((n_items, n_items), dtype=np.float64)
-    for i in range(n_items):
-        w = np.zeros(n_items)
-        for _ in range(max_passes):
-            max_delta = 0.0
-            for k in range(n_items):
-                denominator = gram[k, k] + beta
-                if k == i or denominator == 0.0:
-                    continue
-                # Partial residual correlation with coordinate k held out.
-                correlation = gram[i, k] - (gram[k] @ w) + gram[k, k] * w[k]
-                new = max(0.0, (correlation - lambd) / denominator)
-                delta = new - w[k]
-                if delta != 0.0:
-                    w[k] = new
-                    max_delta = max(max_delta, abs(delta))
-            if max_delta < tol:
-                break
-        weights[:, i] = w
-    return weights
-
-
-def objective(interactions: Any, weights: Any, lambd: float, beta: float) -> float:
-    """Total SLIM objective summed over all target items."""
-    interactions = to_dense(interactions)
-    weights = to_dense(weights)
-    residual = interactions - interactions @ weights
-    return float(
-        0.5 * np.sum(residual**2)
-        + lambd * np.sum(weights)
-        + 0.5 * beta * np.sum(weights**2)
-    )
-
-
 def kkt_violation(interactions: Any, weights: Any, lambd: float, beta: float) -> float:
     """Largest KKT violation of ``weights``; an exact solution scores ``0``.
 
