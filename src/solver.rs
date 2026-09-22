@@ -5,6 +5,7 @@
 //! derived in `docs/algorithm.md`.
 
 use crate::gram::Gram;
+use crate::scratch::PerThread;
 use rayon::prelude::*;
 use rayon::ThreadPoolBuilder;
 
@@ -388,12 +389,10 @@ pub fn solve_slim_csr(
                 "interaction values are too large: Gram matrix overflowed to infinity".to_string(),
             ));
         }
+        let scratch = PerThread::new(|| Scratch::new(n_cols));
         let per_item: Vec<ItemResult> = (0..n_cols)
             .into_par_iter()
-            .map_init(
-                || Scratch::new(n_cols),
-                |scratch, i| solve_item(i, &gram, &params, scratch),
-            )
+            .map(|i| scratch.with(|s| solve_item(i, &gram, &params, s)))
             .collect();
         Ok(assemble(n_cols, per_item))
     };

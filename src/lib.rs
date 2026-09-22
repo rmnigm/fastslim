@@ -2,6 +2,7 @@
 //! [`gram`] and [`solver`]; this module only validates and converts inputs.
 
 mod gram;
+mod scratch;
 mod solver;
 #[cfg(test)]
 mod testing;
