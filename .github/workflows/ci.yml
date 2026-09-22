@@ -25,6 +25,11 @@ jobs:
         run: cargo fmt --check
       - name: Clippy
         run: cargo clippy --all-targets -- -D warnings
+      # Enforces `rust-version` in Cargo.toml without adding a required check.
+      - name: MSRV check (Rust 1.85)
+        run: |
+          rustup toolchain install 1.85 --profile minimal
+          cargo +1.85 check --all-targets
 
   test-rust:
     name: Rust tests
@@ -66,6 +71,8 @@ jobs:
         run: uv run ruff check python/ benchmarks/ $([ -d tests ] && echo tests/)
       - name: Ruff format check
         run: uv run ruff format --check python/ benchmarks/ $([ -d tests ] && echo tests/)
+      - name: Pyrefly type check
+        run: uv run pyrefly check
 
   build-and-test:
     name: Test (py${{ matrix.python-version }}, ${{ matrix.os }})
