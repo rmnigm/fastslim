@@ -1,17 +1,16 @@
 from __future__ import annotations
 
-from typing import Any
-
 import numpy as np
+import numpy.typing as npt
 from scipy import sparse
 
 from .api import top_k_from_scores
-from .validation import check_integer, check_interaction_matrix
+from .validation import MatrixLike, check_integer, check_interaction_matrix
 
 __all__ = ["ndcg_at_k", "precision_at_k", "recall_at_k"]
 
 
-def as_test_csr(test_matrix: Any, n_users: int) -> sparse.csr_matrix:
+def as_test_csr(test_matrix: MatrixLike, n_users: int) -> sparse.csr_matrix:
     """Canonical CSR view of the held-out interactions."""
     test_csr, _ = check_interaction_matrix(test_matrix, "test_matrix")
     if test_csr.shape[0] != n_users:
@@ -86,7 +85,7 @@ def hits(top_k: np.ndarray, test_csr: sparse.csr_matrix) -> np.ndarray:
 
 
 def prepare(
-    predictions: Any, test_matrix: Any, k: int
+    predictions: npt.ArrayLike, test_matrix: MatrixLike, k: int
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Return ``(hits, n_test_per_user, has_test_items)`` for the given inputs."""
     k = check_integer(k, "k", 1)
@@ -102,7 +101,9 @@ def prepare(
     return hits(top_k, test_csr), n_test, n_test > 0
 
 
-def precision_at_k(predictions: Any, test_matrix: Any, k: int = 10) -> float:
+def precision_at_k(
+    predictions: npt.ArrayLike, test_matrix: MatrixLike, k: int = 10
+) -> float:
     """Fraction of the top ``k`` recommendations that are held-out items.
 
     Parameters
@@ -127,7 +128,9 @@ def precision_at_k(predictions: Any, test_matrix: Any, k: int = 10) -> float:
     return float(np.mean(hits[has_test].sum(axis=1) / k))
 
 
-def recall_at_k(predictions: Any, test_matrix: Any, k: int = 10) -> float:
+def recall_at_k(
+    predictions: npt.ArrayLike, test_matrix: MatrixLike, k: int = 10
+) -> float:
     """Fraction of a user's held-out items that appear in the top ``k``.
 
     Parameters
@@ -151,7 +154,9 @@ def recall_at_k(predictions: Any, test_matrix: Any, k: int = 10) -> float:
     return float(np.mean(hits[has_test].sum(axis=1) / n_test[has_test]))
 
 
-def ndcg_at_k(predictions: Any, test_matrix: Any, k: int = 10) -> float:
+def ndcg_at_k(
+    predictions: npt.ArrayLike, test_matrix: MatrixLike, k: int = 10
+) -> float:
     """Normalised discounted cumulative gain at ``k``, with binary relevance.
 
     A hit at rank ``j`` (0-based) contributes ``1 / log2(j + 2)``.  The ideal

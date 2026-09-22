@@ -2,18 +2,24 @@ from __future__ import annotations
 
 import warnings
 from collections.abc import Iterator
-from typing import Any
 
 import numpy as np
 from scipy import sparse
 
 from .native import solve_slim
-from .validation import check_integer, check_interaction_matrix, check_params
+from .validation import (
+    Matrix,
+    MatrixLike,
+    check_integer,
+    check_interaction_matrix,
+    check_params,
+)
 
 __all__ = ["ConvergenceWarning", "fit", "predict", "recommend"]
 
+
 def solve(
-    matrix: Any,
+    matrix: sparse.csr_matrix,
     lambd: float,
     beta: float,
     max_iter: int,
@@ -47,13 +53,13 @@ class ConvergenceWarning(UserWarning):
 
 
 def fit_with_diagnostics(
-    interaction_matrix: Any,
+    interaction_matrix: MatrixLike,
     lambd: float,
     beta: float,
     max_iter: int,
     tol: float,
     n_threads: int | None,
-) -> tuple[Any, np.ndarray, np.ndarray]:
+) -> tuple[sparse.csr_matrix | sparse.csr_array, np.ndarray, np.ndarray]:
     """Validate, solve and assemble ``W``; shared by :func:`fit` and ``SLIM``.
 
     Returns ``(weights, n_passes, converged)``.
@@ -88,13 +94,13 @@ def fit_with_diagnostics(
 
 
 def fit(
-    interaction_matrix: Any,
+    interaction_matrix: MatrixLike,
     lambd: float = 0.5,
     beta: float = 0.5,
     max_iter: int = 1000,
     tol: float = 1e-4,
     n_threads: int | None = None,
-) -> sparse.csr_matrix:
+) -> sparse.csr_matrix | sparse.csr_array:
     """Fit SLIM item-item weights with non-negative coordinate descent.
 
     Returns ``W`` of shape ``(n_items, n_items)``, sparse and non-negative with
@@ -106,7 +112,7 @@ def fit(
     return weights
 
 
-def as_weights(weights: Any) -> Any:
+def as_weights(weights: MatrixLike) -> Matrix:
     """Return ``weights`` as a CSR matrix or a 2-D dense float64 array."""
     if sparse.issparse(weights):
         if weights.ndim != 2:
@@ -120,7 +126,7 @@ def as_weights(weights: Any) -> Any:
     return dense
 
 
-def prepare_history(user_history: Any, n_items: int) -> tuple[Any, bool]:
+def prepare_history(user_history: MatrixLike, n_items: int) -> tuple[Matrix, bool]:
     """Return ``(history, is_single_user)`` with ``history`` always 2-D.
 
     A sparse *matrix* of shape ``(1, n_items)`` counts as one user because
@@ -157,7 +163,7 @@ def prepare_history(user_history: Any, n_items: int) -> tuple[Any, bool]:
     return history, single
 
 
-def mask_seen(scores: np.ndarray, history: Any) -> None:
+def mask_seen(scores: np.ndarray, history: Matrix) -> None:
     """Set the score of every nonzero history entry to ``-inf``, in place."""
     if sparse.issparse(history):
         if history.nnz == 0:
@@ -169,7 +175,7 @@ def mask_seen(scores: np.ndarray, history: Any) -> None:
         scores[history != 0] = -np.inf
 
 
-def score_chunk(history: Any, weights: Any, exclude_seen: bool) -> np.ndarray:
+def score_chunk(history: Matrix, weights: Matrix, exclude_seen: bool) -> np.ndarray:
     """Dense ``float64`` scores for one slice of users."""
     product = history @ weights
     scores = product.toarray() if sparse.issparse(product) else np.asarray(product)
@@ -209,8 +215,8 @@ def top_k_from_scores(scores: np.ndarray, k: int) -> np.ndarray:
 
 
 def predict(
-    weights: Any,
-    user_history: Any,
+    weights: MatrixLike,
+    user_history: MatrixLike,
     *,
     exclude_seen: bool = True,
     batch_size: int | None = None,
@@ -232,8 +238,8 @@ def predict(
 
 
 def recommend(
-    weights: Any,
-    user_history: Any,
+    weights: MatrixLike,
+    user_history: MatrixLike,
     k: int = 10,
     *,
     exclude_seen: bool = True,

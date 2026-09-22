@@ -4,6 +4,7 @@ import numbers
 from typing import Any
 
 import numpy as np
+import numpy.typing as npt
 from scipy import sparse
 
 __all__ = [
@@ -12,6 +13,10 @@ __all__ = [
     "check_interaction_matrix",
     "check_params",
 ]
+
+Matrix = np.ndarray | sparse.spmatrix | sparse.sparray
+MatrixLike = npt.ArrayLike | sparse.spmatrix | sparse.sparray
+
 
 def check_integer(value: Any, name: str, minimum: int) -> int:
     """Return ``value`` as an ``int``, rejecting non-integers and small values.
@@ -89,7 +94,7 @@ def check_values(csr: sparse.csr_matrix, name: str) -> None:
 
 
 def check_interaction_matrix(
-    matrix: Any,
+    matrix: MatrixLike,
     name: str = "interaction_matrix",
 ) -> tuple[sparse.csr_matrix, bool]:
     """Coerce ``matrix`` to a canonical CSR float64 user-item matrix.
