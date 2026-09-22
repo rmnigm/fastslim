@@ -2,7 +2,7 @@ repos:
   # Keep this rev in sync with the pinned `ruff` in the `dev` dependency group
   # so pre-commit, CI and local `uv run ruff` all agree.
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.16.6
+    rev: v0.16.8
     hooks:
       - id: ruff-check
         types_or: [python, pyi]
