@@ -6,24 +6,14 @@ import numpy as np
 from scipy import sparse
 
 from .api import top_k_from_scores
-from .validation import check_integer
+from .validation import check_integer, check_interaction_matrix
 
 __all__ = ["ndcg_at_k", "precision_at_k", "recall_at_k"]
 
 
 def as_test_csr(test_matrix: Any, n_users: int) -> sparse.csr_matrix:
     """Canonical CSR view of the held-out interactions."""
-    if not sparse.issparse(test_matrix):
-        test_matrix = sparse.csr_matrix(np.asarray(test_matrix))
-    if test_matrix.ndim != 2:
-        raise ValueError(f"test_matrix must be 2-D, got {test_matrix.ndim}-D")
-    test_csr = test_matrix if test_matrix.format == "csr" else test_matrix.tocsr()
-    if not test_csr.has_canonical_format:
-        test_csr = test_csr.copy()
-        test_csr.sum_duplicates()
-    if test_csr.nnz and not test_csr.data.all():
-        test_csr = test_csr.copy()
-        test_csr.eliminate_zeros()
+    test_csr, _ = check_interaction_matrix(test_matrix, "test_matrix")
     if test_csr.shape[0] != n_users:
         raise ValueError(
             f"test_matrix has {test_csr.shape[0]} rows but predictions cover "

@@ -148,6 +148,17 @@ def test_invalid_ranked_ids_are_rejected(metric, predictions, message, test_matr
         metric(np.array(predictions), test_matrix, k=K)
 
 
+@pytest.mark.parametrize(
+    "value", [-1.0, np.nan, np.inf], ids=["negative", "nan", "inf"]
+)
+@pytest.mark.parametrize("metric", METRICS, ids=METRIC_IDS)
+def test_invalid_test_matrix_values_are_rejected(metric, value, test_matrix):
+    corrupted = test_matrix.copy()
+    corrupted.data[0] = value
+    with pytest.raises(ValueError, match="test_matrix"):
+        metric(RECOMMENDED, corrupted, k=K)
+
+
 @pytest.mark.parametrize("metric", METRICS, ids=METRIC_IDS)
 def test_metrics_accept_fastslim_output(metric, fitted):
     """End-to-end: fit, score, rank, measure -- shapes and ranges line up."""
