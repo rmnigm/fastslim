@@ -13,10 +13,6 @@ __all__ = [
     "check_params",
 ]
 
-# ``sparse.sparray`` only exists on scipy >= 1.11; ``isinstance(x, ())`` is False.
-SPARRAY: Any = getattr(sparse, "sparray", ())
-
-
 def check_integer(value: Any, name: str, minimum: int) -> int:
     """Return ``value`` as an ``int``, rejecting non-integers and small values.
 
@@ -100,7 +96,7 @@ def check_interaction_matrix(
 
     Returns ``(csr, is_sparse_array)``; the caller's arrays are never mutated.
     """
-    is_sparse_array = isinstance(matrix, SPARRAY)
+    is_sparse_array = isinstance(matrix, sparse.sparray)
 
     if sparse.issparse(matrix):
         if matrix.ndim != 2:

@@ -37,8 +37,8 @@ classifiers = [
 license = "Apache-2.0"
 license-files = ["LICEN[CS]E*"]
 dependencies = [
-    "numpy>=1.20",
-    "scipy>=1.7",
+    "numpy>=1.21.6",
+    "scipy>=1.11",
 ]
 # Single-sourced from Cargo.toml by maturin.
 dynamic = ["version"]

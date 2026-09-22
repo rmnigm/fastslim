@@ -12,9 +12,6 @@ from .validation import check_integer, check_interaction_matrix, check_params
 
 __all__ = ["ConvergenceWarning", "fit", "predict", "recommend"]
 
-SPARRAY: Any = getattr(sparse, "sparray", ())
-
-
 def solve(
     matrix: Any,
     lambd: float,
@@ -131,7 +128,7 @@ def prepare_history(user_history: Any, n_items: int) -> tuple[Any, bool]:
     """
     if sparse.issparse(user_history):
         single = user_history.ndim == 1 or (
-            not isinstance(user_history, SPARRAY) and user_history.shape[0] == 1
+            not isinstance(user_history, sparse.sparray) and user_history.shape[0] == 1
         )
         history = user_history
         if history.ndim == 1:
