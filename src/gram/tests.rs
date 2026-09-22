@@ -74,6 +74,26 @@ fn matches_dense_with_duplicates_and_empty_row_and_column() {
 }
 
 #[test]
+fn drops_stored_zeros_and_underflowing_sums() {
+    // Item 1 is an explicit zero, and P_34 = 1e-200 * 1e-200 underflows, so
+    // P_01, P_12 and P_34 are structural but zero and must leave no gaps.
+    let data = vec![1.0, 0.0, 2.0, 1.0, 1e-200, 1e-200, 3.0];
+    let indices = vec![0u32, 1, 2, 0, 3, 4, 2];
+    let indptr = vec![0usize, 3, 6, 7];
+    let g = Gram::from_csr(&data, &indices, &indptr, 3, 5);
+    let x = vec![
+        vec![1.0, 0.0, 2.0, 0.0, 0.0],
+        vec![1.0, 0.0, 0.0, 1e-200, 1e-200],
+        vec![0.0, 0.0, 3.0, 0.0, 0.0],
+    ];
+    check_invariants(&g);
+    assert_close(&to_dense(&g), &dense_gram(&x, 5));
+    assert_eq!(g.indptr, vec![0, 3, 3, 4, 5, 6]);
+    assert_eq!(g.indices, vec![2, 3, 4, 0, 0, 0]);
+    assert_eq!(g.data, vec![2.0, 1e-200, 1e-200, 2.0, 1e-200, 1e-200]);
+}
+
+#[test]
 fn matches_dense_random_binary() {
     let x = random_binary(7, 30, 12, 0.3);
     let (data, indices, indptr) = csr_from_dense(&x);

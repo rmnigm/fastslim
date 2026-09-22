@@ -146,9 +146,10 @@ def test_all_zero_rows_and_columns():
     dense[:, 1] = 0.0  # an item nobody touched
     weights = fastslim.fit(sparse.csr_matrix(dense), **PARAMS)
 
+    dense_weights = to_dense(weights)
     assert weights.shape == (4, 4)
-    assert weights[1].nnz == 0
-    assert weights[:, 1].nnz == 0
+    assert not dense_weights[1].any()
+    assert not dense_weights[:, 1].any()
     assert weights.nnz > 0
 
 

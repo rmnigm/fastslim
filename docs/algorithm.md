@@ -304,6 +304,12 @@ $u$'s CSR row and add $x_{uk} x_{uj}$ into `acc[j]`. The list of touched columns
 sorted once at the end, the diagonal $P_{kk}$ is split off into `diag`, and exact zeros
 are dropped.
 
+The build takes two passes over the rows. The first counts the columns each row touches,
+which fixes an upper bound on every row's length; the output arrays are allocated once
+at that size, and the second pass accumulates each row and writes it straight into its
+own segment. Rows whose sums came out exactly zero (stored zeros in $X$, or underflow)
+leave a gap that a final sequential sweep closes, so $P$ is never held twice.
+
 Floating-point addition is not associative, so "deterministic" is a claim about
 summation *order*, and three things secure it:
 
@@ -318,9 +324,10 @@ summation *order*, and three things secure it:
    There is no iteration over a hash table whose order depends on capacity, seed or
    insertion history.
 3. **One item, one thread, start to finish.** `solve_item` owns a target item's entire
-   solve; `assemble` concatenates the per-item results in item order. Rayon's
-   `map_init(...).collect()` fills a `Vec` by index, so the output layout is independent
-   of completion order.
+   solve; `assemble` concatenates the per-item results in item order. Rayon's indexed
+   `collect()` fills a `Vec` by index, so the output layout is independent of
+   completion order. Scratch buffers are allocated once per worker thread and reset
+   after every item, so which thread solves an item cannot affect its result.
 
 Together these give the property the tests assert byte for byte: `fastslim.fit(X,
 n_threads=1)` and `fastslim.fit(X, n_threads=None)` produce identical `indptr`,

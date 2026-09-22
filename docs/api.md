@@ -167,10 +167,15 @@ the numbers depend on how many users the split happened to leave empty.
 
 Each returns a `float`: the mean over users with at least one held-out item, or `0.0` if
 there are none. `test_matrix` is a sparse matrix or array-like of shape
-`(n_users, n_items)`. A `predictions` array that is not 2-D, does not cover the same
-number of users as `test_matrix`, or (for scores) does not score the same number of
-items, raises `ValueError`; so does an integer `predictions` array with fewer than `k`
-ranked items per user.
+`(n_users, n_items)` whose values must be finite and non-negative; explicit zeros are
+dropped. `ValueError` is raised when:
+
+- `predictions` is not 2-D or does not cover the same number of users as `test_matrix`;
+- a score array does not score the same number of items as `test_matrix`;
+- an integer array has fewer than `k` ranked items per user, holds an id outside
+  `[0, n_items)` in its first `k` columns, or repeats an id within a user's first `k`
+  columns;
+- `test_matrix` is not 2-D or holds a negative or non-finite value.
 
 ## `fastslim.ConvergenceWarning`
 

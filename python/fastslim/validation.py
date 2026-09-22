@@ -4,6 +4,7 @@ import numbers
 from typing import Any
 
 import numpy as np
+import numpy.typing as npt
 from scipy import sparse
 
 __all__ = [
@@ -13,8 +14,8 @@ __all__ = [
     "check_params",
 ]
 
-# ``sparse.sparray`` only exists on scipy >= 1.11; ``isinstance(x, ())`` is False.
-SPARRAY: Any = getattr(sparse, "sparray", ())
+Matrix = np.ndarray | sparse.csr_matrix | sparse.csr_array
+MatrixLike = npt.ArrayLike | sparse.spmatrix | sparse.sparray
 
 
 def check_integer(value: Any, name: str, minimum: int) -> int:
@@ -93,14 +94,14 @@ def check_values(csr: sparse.csr_matrix, name: str) -> None:
 
 
 def check_interaction_matrix(
-    matrix: Any,
+    matrix: MatrixLike,
     name: str = "interaction_matrix",
 ) -> tuple[sparse.csr_matrix, bool]:
     """Coerce ``matrix`` to a canonical CSR float64 user-item matrix.
 
     Returns ``(csr, is_sparse_array)``; the caller's arrays are never mutated.
     """
-    is_sparse_array = isinstance(matrix, SPARRAY)
+    is_sparse_array = isinstance(matrix, sparse.sparray)
 
     if sparse.issparse(matrix):
         if matrix.ndim != 2:

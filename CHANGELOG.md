@@ -7,6 +7,18 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-23
+
+### Changed
+
+- About 40% lower peak memory in `fit`; ML-1M drops from roughly 360 MB to 225 MB.
+- The metrics reject ranked item ids outside `[0, n_items)` or repeated within a
+  user's top `k`, and a `test_matrix` with negative or non-finite values, with
+  `ValueError`. Such input used to inflate precision, recall and ndcg silently.
+- `fit` copies the interaction values before releasing the GIL, so another Python
+  thread writing to the same array can no longer affect a running fit.
+- Minimum versions are now scipy 1.11, numpy 1.21.6 and, for source builds, Rust 1.85.
+
 ## [0.2.0] - 2026-09-06
 
 ### Added
@@ -55,5 +67,6 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 Initial releases: a single `fastslim.fit` function and no published wheels.
 
-[Unreleased]: https://github.com/rmnigm/fastslim/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/rmnigm/fastslim/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/rmnigm/fastslim/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/rmnigm/fastslim/releases/tag/v0.2.0

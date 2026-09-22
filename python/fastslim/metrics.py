@@ -1,29 +1,18 @@
 from __future__ import annotations
 
-from typing import Any
-
 import numpy as np
+import numpy.typing as npt
 from scipy import sparse
 
 from .api import top_k_from_scores
-from .validation import check_integer
+from .validation import MatrixLike, check_integer, check_interaction_matrix
 
 __all__ = ["ndcg_at_k", "precision_at_k", "recall_at_k"]
 
 
-def as_test_csr(test_matrix: Any, n_users: int) -> sparse.csr_matrix:
+def as_test_csr(test_matrix: MatrixLike, n_users: int) -> sparse.csr_matrix:
     """Canonical CSR view of the held-out interactions."""
-    if not sparse.issparse(test_matrix):
-        test_matrix = sparse.csr_matrix(np.asarray(test_matrix))
-    if test_matrix.ndim != 2:
-        raise ValueError(f"test_matrix must be 2-D, got {test_matrix.ndim}-D")
-    test_csr = test_matrix if test_matrix.format == "csr" else test_matrix.tocsr()
-    if not test_csr.has_canonical_format:
-        test_csr = test_csr.copy()
-        test_csr.sum_duplicates()
-    if test_csr.nnz and not test_csr.data.all():
-        test_csr = test_csr.copy()
-        test_csr.eliminate_zeros()
+    test_csr, _ = check_interaction_matrix(test_matrix, "test_matrix")
     if test_csr.shape[0] != n_users:
         raise ValueError(
             f"test_matrix has {test_csr.shape[0]} rows but predictions cover "
@@ -32,27 +21,42 @@ def as_test_csr(test_matrix: Any, n_users: int) -> sparse.csr_matrix:
     return test_csr
 
 
-def top_k_items(predictions: Any, k: int, n_items: int | None) -> np.ndarray:
-    """Coerce scores or recommendations to a ``(n_users, k)`` index array."""
-    predictions = np.asarray(predictions)
-    if predictions.ndim != 2:
+def check_ranked_ids(ranked: np.ndarray, n_items: int) -> None:
+    """Reject item ids outside ``[0, n_items)`` and ids repeated within a row."""
+    outside = (ranked < 0) | (ranked >= n_items)
+    if outside.any():
+        user, rank = np.argwhere(outside)[0]
         raise ValueError(
-            f"predictions must be 2-D, got a {predictions.ndim}-D array with "
-            f"shape {predictions.shape}"
+            f"predictions holds item id {ranked[user, rank]} for user {user}, "
+            f"outside the {n_items} items of test_matrix"
         )
+    ordered = np.sort(ranked, axis=1)
+    repeated = ordered[:, 1:] == ordered[:, :-1]
+    if repeated.any():
+        user, rank = np.argwhere(repeated)[0]
+        raise ValueError(
+            f"predictions repeats item id {ordered[user, rank]} for user {user} "
+            "within the top k"
+        )
+
+
+def top_k_items(predictions: np.ndarray, k: int, n_items: int) -> np.ndarray:
+    """Coerce scores or recommendations to a ``(n_users, k)`` index array."""
     if np.issubdtype(predictions.dtype, np.integer):
         if predictions.shape[1] < k:
             raise ValueError(
                 f"predictions holds only {predictions.shape[1]} ranked items "
                 f"per user, need at least k={k}"
             )
-        return predictions[:, :k]
-    if n_items is not None and predictions.shape[1] != n_items:
+        ranked = predictions[:, :k]
+        check_ranked_ids(ranked, n_items)
+        return ranked
+    if predictions.shape[1] != n_items:
         raise ValueError(
             f"predictions score {predictions.shape[1]} items but test_matrix "
             f"has {n_items}"
         )
-    return top_k_from_scores(predictions, min(k, predictions.shape[1]))
+    return top_k_from_scores(predictions, min(k, n_items))
 
 
 def hits(top_k: np.ndarray, test_csr: sparse.csr_matrix) -> np.ndarray:
@@ -81,7 +85,7 @@ def hits(top_k: np.ndarray, test_csr: sparse.csr_matrix) -> np.ndarray:
 
 
 def prepare(
-    predictions: Any, test_matrix: Any, k: int
+    predictions: npt.ArrayLike, test_matrix: MatrixLike, k: int
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Return ``(hits, n_test_per_user, has_test_items)`` for the given inputs."""
     k = check_integer(k, "k", 1)
@@ -92,13 +96,14 @@ def prepare(
             f"shape {predictions.shape}"
         )
     test_csr = as_test_csr(test_matrix, predictions.shape[0])
-    scores_given = not np.issubdtype(predictions.dtype, np.integer)
-    top_k = top_k_items(predictions, k, test_csr.shape[1] if scores_given else None)
+    top_k = top_k_items(predictions, k, test_csr.shape[1])
     n_test = np.diff(test_csr.indptr)
     return hits(top_k, test_csr), n_test, n_test > 0
 
 
-def precision_at_k(predictions: Any, test_matrix: Any, k: int = 10) -> float:
+def precision_at_k(
+    predictions: npt.ArrayLike, test_matrix: MatrixLike, k: int = 10
+) -> float:
     """Fraction of the top ``k`` recommendations that are held-out items.
 
     Parameters
@@ -123,7 +128,9 @@ def precision_at_k(predictions: Any, test_matrix: Any, k: int = 10) -> float:
     return float(np.mean(hits[has_test].sum(axis=1) / k))
 
 
-def recall_at_k(predictions: Any, test_matrix: Any, k: int = 10) -> float:
+def recall_at_k(
+    predictions: npt.ArrayLike, test_matrix: MatrixLike, k: int = 10
+) -> float:
     """Fraction of a user's held-out items that appear in the top ``k``.
 
     Parameters
@@ -147,7 +154,9 @@ def recall_at_k(predictions: Any, test_matrix: Any, k: int = 10) -> float:
     return float(np.mean(hits[has_test].sum(axis=1) / n_test[has_test]))
 
 
-def ndcg_at_k(predictions: Any, test_matrix: Any, k: int = 10) -> float:
+def ndcg_at_k(
+    predictions: npt.ArrayLike, test_matrix: MatrixLike, k: int = 10
+) -> float:
     """Normalised discounted cumulative gain at ``k``, with binary relevance.
 
     A hit at rank ``j`` (0-based) contributes ``1 / log2(j + 2)``.  The ideal

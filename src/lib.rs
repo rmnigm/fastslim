@@ -2,17 +2,16 @@
 //! [`gram`] and [`solver`]; this module only validates and converts inputs.
 
 mod gram;
+mod scratch;
 mod solver;
 #[cfg(test)]
 mod testing;
 
-use std::borrow::Cow;
-
-use numpy::{Element, PyArray1, PyReadonlyArray1};
+use numpy::{Element, PyArray1, PyArrayMethods, PyReadonlyArray1};
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 
-use solver::{solve_slim_csr, SlimError, SlimParams};
+use solver::{SlimError, SlimParams, solve_slim_csr};
 
 /// `(indptr, indices, data, n_passes, converged)`, see [`solve_slim`].
 type SolveOutput<'py> = (
@@ -44,21 +43,21 @@ where
             Err(_) => {
                 return Err(PyValueError::new_err(format!(
                     "{name}[{pos}] = {x} is negative or too large"
-                )))
+                )));
             }
         }
     }
     Ok(out)
 }
 
-fn convert_index_array<U>(arr: &IndexArray<'_>, name: &str) -> PyResult<Vec<U>>
+fn convert_index_array<U>(arr: IndexArray<'_>, name: &str) -> PyResult<Vec<U>>
 where
     i32: TryInto<U>,
     i64: TryInto<U>,
 {
     match arr {
-        IndexArray::I32(a) => convert_indices(a, name),
-        IndexArray::I64(a) => convert_indices(a, name),
+        IndexArray::I32(a) => convert_indices(&a, name),
+        IndexArray::I64(a) => convert_indices(&a, name),
     }
 }
 
@@ -71,7 +70,7 @@ where
 #[allow(clippy::too_many_arguments)]
 fn solve_slim<'py>(
     py: Python<'py>,
-    data: PyReadonlyArray1<'py, f64>,
+    data: &Bound<'py, PyArray1<f64>>,
     indices: IndexArray<'py>,
     indptr: IndexArray<'py>,
     n_rows: usize,
@@ -82,13 +81,10 @@ fn solve_slim<'py>(
     tol: f64,
     n_threads: Option<usize>,
 ) -> PyResult<SolveOutput<'py>> {
-    // Borrow contiguous data in place; copy only strided views.
-    let data: Cow<'_, [f64]> = match data.as_slice() {
-        Ok(slice) => Cow::Borrowed(slice),
-        Err(_) => Cow::Owned(data.as_array().to_vec()),
-    };
-    let indices: Vec<u32> = convert_index_array(&indices, "indices")?;
-    let indptr: Vec<usize> = convert_index_array(&indptr, "indptr")?;
+    // Own every buffer so that no Python thread can mutate it while the GIL is released.
+    let data: Vec<f64> = data.try_readonly()?.as_array().to_vec();
+    let indices: Vec<u32> = convert_index_array(indices, "indices")?;
+    let indptr: Vec<usize> = convert_index_array(indptr, "indptr")?;
     let params = SlimParams {
         lambd,
         beta,
@@ -97,7 +93,7 @@ fn solve_slim<'py>(
         n_threads,
     };
     let out = py
-        .allow_threads(|| solve_slim_csr(&data, &indices, &indptr, n_rows, n_cols, params))
+        .detach(|| solve_slim_csr(&data, &indices, &indptr, n_rows, n_cols, params))
         .map_err(|e| match e {
             SlimError::InvalidInput(msg) => PyValueError::new_err(msg),
             SlimError::ThreadPool(_) => PyRuntimeError::new_err(e.to_string()),

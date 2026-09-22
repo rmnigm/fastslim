@@ -6,6 +6,7 @@ import numpy as np
 from scipy import sparse
 
 from . import api
+from .validation import MatrixLike
 
 __all__ = ["NotFittedError", "SLIM"]
 
@@ -64,7 +65,7 @@ class SLIM:
         return self
 
     # X/X_history keep the scikit-learn spelling; renaming breaks callers.
-    def fit(self, X: Any, y: Any = None) -> SLIM:  # noqa: N803
+    def fit(self, X: MatrixLike, y: Any = None) -> SLIM:  # noqa: N803
         """Fit the item-item weights on a user-item interaction matrix.
 
         Returns ``self``; ``y`` is ignored.
@@ -73,10 +74,10 @@ class SLIM:
         self.weights, self.n_passes, self.converged = api.fit_with_diagnostics(
             X, self.lambd, self.beta, self.max_iter, self.tol, self.n_threads
         )
-        self.n_items = int(self.weights.shape[0])
+        self.n_items = len(self.converged)
         return self
 
-    def fitted_weights(self) -> sparse.csr_matrix:
+    def fitted_weights(self) -> sparse.csr_matrix | sparse.csr_array:
         """Return the fitted ``weights``, or raise :class:`NotFittedError`."""
         weights = getattr(self, "weights", None)
         if weights is None:
@@ -88,7 +89,7 @@ class SLIM:
 
     def predict(
         self,
-        X_history: Any,  # noqa: N803
+        X_history: MatrixLike,  # noqa: N803
         *,
         exclude_seen: bool = True,
         batch_size: int | None = None,
@@ -103,7 +104,7 @@ class SLIM:
 
     def recommend(
         self,
-        X_history: Any,  # noqa: N803
+        X_history: MatrixLike,  # noqa: N803
         k: int = 10,
         *,
         exclude_seen: bool = True,

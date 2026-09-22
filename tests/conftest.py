@@ -75,7 +75,9 @@ def tiny_matrix() -> sparse.csr_matrix:
 
 
 @pytest.fixture
-def fitted(tiny_matrix) -> tuple[sparse.csr_matrix, sparse.csr_matrix]:
+def fitted(
+    tiny_matrix,
+) -> tuple[sparse.csr_matrix, sparse.csr_matrix | sparse.csr_array]:
     """``(interactions, weights)`` for a converged fit on ``tiny_matrix``."""
     return tiny_matrix, fastslim.fit(tiny_matrix, lambd=0.2, beta=0.2)
 

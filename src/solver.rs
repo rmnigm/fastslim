@@ -5,8 +5,9 @@
 //! derived in `docs/algorithm.md`.
 
 use crate::gram::Gram;
+use crate::scratch::PerThread;
 use rayon::prelude::*;
-use rayon::ThreadPoolBuilder;
+use rayon::{ThreadPoolBuildError, ThreadPoolBuilder};
 
 /// Solver hyper-parameters.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -49,24 +50,31 @@ pub struct CscOutput {
     pub converged: Vec<bool>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug)]
 pub enum SlimError {
     /// Malformed CSR input, out-of-range parameter, or an overflowing Gram.
     InvalidInput(String),
     /// Rayon could not build the requested thread pool.
-    ThreadPool(String),
+    ThreadPool(ThreadPoolBuildError),
 }
 
 impl std::fmt::Display for SlimError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             SlimError::InvalidInput(msg) => write!(f, "{msg}"),
-            SlimError::ThreadPool(msg) => write!(f, "failed to build thread pool: {msg}"),
+            SlimError::ThreadPool(err) => write!(f, "failed to build thread pool: {err}"),
         }
     }
 }
 
-impl std::error::Error for SlimError {}
+impl std::error::Error for SlimError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            SlimError::InvalidInput(_) => None,
+            SlimError::ThreadPool(err) => Some(err),
+        }
+    }
+}
 
 /// Marker for "not a candidate of the current item" in [`Scratch::pos`].
 const NOT_CAND: u32 = u32::MAX;
@@ -107,7 +115,6 @@ struct ItemResult {
 }
 
 /// One coordinate-descent pass over `coords`, returning the largest weight change.
-#[inline]
 #[allow(clippy::too_many_arguments)]
 fn cd_pass<I: Iterator<Item = usize>>(
     coords: I,
@@ -136,12 +143,12 @@ fn cd_pass<I: Iterator<Item = usize>>(
             w[t] = w_new;
             let (nb_idx, nb_val) = gram.row(k);
             for (&j, &v) in nb_idx.iter().zip(nb_val) {
-                // SAFETY: Gram column indices are < pos.len() and every pos
-                // entry other than NOT_CAND is a local index < r.len().
                 debug_assert!((j as usize) < pos.len());
+                // SAFETY: Gram column indices are < gram.n == pos.len().
                 let tj = unsafe { *pos.get_unchecked(j as usize) };
                 if tj != NOT_CAND {
                     debug_assert!((tj as usize) < r.len());
+                    // SAFETY: non-NOT_CAND pos entries index r; solve_item leaves pos all NOT_CAND.
                     unsafe { *r.get_unchecked_mut(tj as usize) -= v * delta };
                 }
             }
@@ -192,6 +199,8 @@ fn solve_item(i: usize, gram: &Gram, p: &SlimParams, s: &mut Scratch) -> ItemRes
         w,
         active,
     } = s;
+    // Local indices are stored as u32 below NOT_CAND; validate caps n at u32::MAX - 1.
+    debug_assert!(gram.n < NOT_CAND as usize);
     let lambd = p.lambd;
     let beta = p.beta;
 
@@ -276,7 +285,7 @@ fn assemble(n_items: usize, per_item: Vec<ItemResult>) -> CscOutput {
     let mut converged = Vec::with_capacity(n_items);
     indptr.push(0i64);
     for item in per_item {
-        indices.extend(item.idx.iter().map(|&k| k as i64));
+        indices.extend(item.idx.iter().map(|&k| i64::from(k)));
         data.extend_from_slice(&item.val);
         indptr.push(indices.len() as i64);
         n_passes.push(item.n_passes);
@@ -388,12 +397,10 @@ pub fn solve_slim_csr(
                 "interaction values are too large: Gram matrix overflowed to infinity".to_string(),
             ));
         }
+        let scratch = PerThread::new(|| Scratch::new(n_cols));
         let per_item: Vec<ItemResult> = (0..n_cols)
             .into_par_iter()
-            .map_init(
-                || Scratch::new(n_cols),
-                |scratch, i| solve_item(i, &gram, &params, scratch),
-            )
+            .map(|i| scratch.with(|s| solve_item(i, &gram, &params, s)))
             .collect();
         Ok(assemble(n_cols, per_item))
     };
@@ -402,7 +409,7 @@ pub fn solve_slim_csr(
             let pool = ThreadPoolBuilder::new()
                 .num_threads(t)
                 .build()
-                .map_err(|e| SlimError::ThreadPool(e.to_string()))?;
+                .map_err(SlimError::ThreadPool)?;
             pool.install(run)
         }
         None => run(),

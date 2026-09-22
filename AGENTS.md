@@ -15,14 +15,15 @@ metrics. Published on PyPI as `fastslim`; the version is read from `Cargo.toml`.
 
 | Path | Role |
 | --- | --- |
-| `Cargo.toml` | Crate `slim`, lib name `native`, pyo3 `abi3-py310`, `extension-module` as an opt-in feature (enabled by maturin, off for `cargo test`) |
+| `Cargo.toml` | Crate `slim`, lib name `native`, edition 2024, MSRV 1.85, pyo3 0.29 `abi3-py310`, `extension-module` as an opt-in feature (enabled by maturin, off for `cargo test`) |
 | `src/lib.rs` | pyo3 bindings and argument validation only |
-| `src/gram.rs` | Gram matrix `P = XᵀX` by per-item CSC×CSR accumulation, fixed summation order |
+| `src/gram.rs` | Gram matrix `P = XᵀX` in two passes (count, then fill one allocation), fixed summation order |
 | `src/solver.rs` | Per-item non-negative coordinate descent, active set, convergence check, CSC assembly |
+| `src/scratch.rs` | `PerThread`: scratch buffers allocated once per rayon worker |
 | `src/gram/tests.rs`, `src/solver/tests.rs`, `src/testing.rs` | Rust unit tests and shared test helpers (in-crate because the crate is a `cdylib`) |
 | `python/fastslim/__init__.py` | Public exports via `__all__` and `__version__` |
 | `python/fastslim/api.py` | `fit`, `predict`, `recommend`; `solve` is the single call into `native`; `fit_with_diagnostics` is shared with the estimator |
-| `python/fastslim/validation.py` | Input coercion to canonical CSR float64 and parameter checks; never mutates the caller's matrix |
+| `python/fastslim/validation.py` | Input coercion to canonical CSR float64, parameter checks, `Matrix`/`MatrixLike` type aliases; never mutates the caller's matrix |
 | `python/fastslim/estimator.py` | `SLIM` and `NotFittedError` |
 | `python/fastslim/metrics.py` | `precision_at_k`, `recall_at_k`, `ndcg_at_k` |
 | `python/fastslim/native.pyi`, `py.typed` | Type stub for the extension; both ship in the wheel |
@@ -35,12 +36,13 @@ metrics. Published on PyPI as `fastslim`; the version is read from `Cargo.toml`.
 ## Commands
 
 ```bash
-uv sync                                   # dev group (pytest, ruff, hypothesis, pre-commit); builds the extension
+uv sync                                   # dev group (pytest, ruff, pyrefly, hypothesis, pre-commit); builds the extension
 uv sync --group bench                     # adds implicit, h5py, rich, tqdm for the slow test and the benchmark
 uv sync --reinstall-package fastslim      # REQUIRED after any change under src/, Cargo.toml or [tool.maturin]
 uv run pytest -q -m "not slow"            # fast suite, well under a second
 uv run pytest -q                          # includes the MovieLens 100k test (downloads to ~/implicit_data once)
 uv run ruff check python/ tests/ benchmarks/ && uv run ruff format --check python/ tests/ benchmarks/
+uv run pyrefly check                      # types for python/fastslim and tests; benchmarks excluded
 cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
 uv run python benchmarks/benchmark.py --dataset 1m --baseline als --markdown
 uv build && unzip -l dist/*.whl           # wheel must contain native.pyi and py.typed and no tests
@@ -140,8 +142,8 @@ Useful for spotting regressions without a full benchmark (12-thread Apple Silico
 
 | Measurement | Value |
 | --- | --- |
-| ML-1M fit, `lambd=beta=0.5`, `max_iter=15` | about 0.85 s, 400 MB peak |
+| ML-1M fit, `lambd=beta=0.5`, `max_iter=15` | about 0.85 s, 225 MB peak |
 | ML-1M fit with defaults, all items converged | about 12 s |
 | ML-100k benchmark defaults | precision@10 0.3391, recall@10 0.2236, ndcg@10 0.4069 |
 | Seeded 2000×300 binary matrix, `lambd=beta=1` | 21,821 nonzeros, identical for any thread count |
-| Fast pytest suite | 200 tests, under one second |
+| Fast pytest suite | 221 tests, under one second |

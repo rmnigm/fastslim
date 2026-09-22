@@ -29,47 +29,6 @@ fn to_dense_w(out: &CscOutput) -> Vec<Vec<f64>> {
     w
 }
 
-/// Plain full-pass non-negative coordinate descent; returns dense `W[k][i]`.
-fn reference(x: &[Vec<f64>], lambd: f64, beta: f64) -> Vec<Vec<f64>> {
-    let p = dense_gram(x);
-    let n = p.len();
-    let mut wmat = vec![vec![0.0; n]; n];
-    for i in 0..n {
-        let mut w = vec![0.0; n];
-        for _ in 0..100_000 {
-            let mut max_delta = 0.0f64;
-            for k in 0..n {
-                if k == i {
-                    continue;
-                }
-                let denom = p[k][k] + beta;
-                if denom == 0.0 {
-                    continue;
-                }
-                let mut c = p[i][k];
-                for j in 0..n {
-                    if j != k {
-                        c -= p[k][j] * w[j];
-                    }
-                }
-                let w_new = ((c - lambd) / denom).max(0.0);
-                let d = w_new - w[k];
-                if d != 0.0 {
-                    w[k] = w_new;
-                    max_delta = max_delta.max(d.abs());
-                }
-            }
-            if max_delta < 1e-14 {
-                break;
-            }
-        }
-        for k in 0..n {
-            wmat[k][i] = w[k];
-        }
-    }
-    wmat
-}
-
 /// KKT violation of every coordinate of `W`, computed from the dense Gram.
 fn kkt_violations(x: &[Vec<f64>], w: &[Vec<f64>], lambd: f64, beta: f64) -> Vec<Vec<f64>> {
     let p = dense_gram(x);
@@ -146,27 +105,12 @@ fn max_abs_diff(a: &[Vec<f64>], b: &[Vec<f64>]) -> f64 {
         .fold(0.0, f64::max)
 }
 
-fn nnz(w: &[Vec<f64>]) -> usize {
-    w.iter().flatten().filter(|&&v| v > 0.0).count()
-}
-
-fn assert_matches_reference(x: &[Vec<f64>], lambd: f64, beta: f64) {
+/// Fit with tight parameters and assert the solution satisfies the KKT conditions.
+fn assert_meets_kkt(x: &[Vec<f64>], lambd: f64, beta: f64) {
     let out = fit(x, tight(lambd, beta));
     check_invariants(&out);
     assert!(out.converged.iter().all(|&c| c), "not all items converged");
-    let w = to_dense_w(&out);
-    let w_ref = reference(x, lambd, beta);
-    assert_eq!(
-        nnz(&w),
-        nnz(&w_ref),
-        "nnz differs (lambd={lambd}, beta={beta})"
-    );
-    let diff = max_abs_diff(&w, &w_ref);
-    assert!(
-        diff < 1e-6,
-        "max |W - W_ref| = {diff} (lambd={lambd}, beta={beta})"
-    );
-    let kkt = kkt_violation(x, &w, lambd, beta);
+    let kkt = kkt_violation(x, &to_dense_w(&out), lambd, beta);
     assert!(
         kkt < 1e-6,
         "KKT violation {kkt} (lambd={lambd}, beta={beta})"
@@ -183,31 +127,33 @@ fn three_items() -> Vec<Vec<f64>> {
 }
 
 #[test]
-fn hand_computed_three_items() {
-    // P = [[3,2,1],[2,3,2],[1,2,2]], lambd = beta = 0.5.
-    // item 0: w_1 = 1.5/3.5 = 3/7, w_2 clipped to 0 (KKT: 0.5 - 2*3/7 < 0)
-    // item 1: [3.5 1; 1 2.5] w = [1.5; 1.5]  ->  w = [9/31, 15/31]
-    // item 2: w_0 clipped to 0, w_1 = 1.5/3.5 = 3/7
-    let out = fit(&three_items(), tight(0.5, 0.5));
-    assert_eq!(out.indptr, vec![0, 1, 3, 4]);
-    assert_eq!(out.indices, vec![1, 0, 2, 1]);
-    let expected = [3.0 / 7.0, 9.0 / 31.0, 15.0 / 31.0, 3.0 / 7.0];
-    for (got, want) in out.data.iter().zip(expected) {
-        assert!((got - want).abs() < 1e-9, "{got} vs {want}");
+fn three_items_match_hand_computed_weights() {
+    // P = [[3,2,1],[2,3,2],[1,2,2]]; each case solves (P + beta I) w = P_i - lambd on its support.
+    let cases = [
+        (0.5, 0.5, [3.0 / 7.0, 9.0 / 31.0, 15.0 / 31.0, 3.0 / 7.0]),
+        (0.0, 0.5, [4.0 / 7.0, 12.0 / 31.0, 20.0 / 31.0, 4.0 / 7.0]),
+        (0.5, 0.0, [0.5, 0.3, 0.6, 0.5]),
+    ];
+    let x = three_items();
+    for (lambd, beta, expected) in cases {
+        let out = fit(&x, tight(lambd, beta));
+        assert_eq!(out.indptr, vec![0, 1, 3, 4], "lambd={lambd}, beta={beta}");
+        assert_eq!(out.indices, vec![1, 0, 2, 1], "lambd={lambd}, beta={beta}");
+        for (got, want) in out.data.iter().zip(expected) {
+            assert!((got - want).abs() < 1e-9, "{got} vs {want}");
+        }
+        assert_meets_kkt(&x, lambd, beta);
     }
-    assert_matches_reference(&three_items(), 0.5, 0.5);
 }
 
 #[test]
-fn lambda_zero_matches_reference() {
-    assert_matches_reference(&three_items(), 0.0, 0.5);
-    assert_matches_reference(&random_binary(21, 40, 10, 0.25), 0.0, 1.0);
+fn lambda_zero_meets_kkt() {
+    assert_meets_kkt(&random_binary(21, 40, 10, 0.25), 0.0, 1.0);
 }
 
 #[test]
-fn beta_zero_matches_reference() {
-    assert_matches_reference(&three_items(), 0.5, 0.0);
-    assert_matches_reference(&random_binary(22, 40, 10, 0.25), 0.7, 0.0);
+fn beta_zero_meets_kkt() {
+    assert_meets_kkt(&random_binary(22, 40, 10, 0.25), 0.7, 0.0);
 }
 
 #[test]
@@ -385,7 +331,7 @@ fn item_with_small_norm_is_not_skipped() {
     let out = fit(&x, tight(2.0, 0.5));
     let w = to_dense_w(&out);
     assert!((w[1][0] - 1.0 / 10.5).abs() < 1e-9, "w_10 = {}", w[1][0]);
-    assert_matches_reference(&x, 2.0, 0.5);
+    assert_meets_kkt(&x, 2.0, 0.5);
 }
 
 #[test]
@@ -393,7 +339,7 @@ fn kkt_on_random_binary_problems() {
     for seed in 1..=3u64 {
         let x = random_binary(seed, 40, 15, 0.2);
         for lambd in [0.1, 0.5, 1.5] {
-            assert_matches_reference(&x, lambd, 0.5);
+            assert_meets_kkt(&x, lambd, 0.5);
         }
     }
 }

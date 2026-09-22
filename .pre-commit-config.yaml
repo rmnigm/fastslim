@@ -2,7 +2,7 @@ repos:
   # Keep this rev in sync with the pinned `ruff` in the `dev` dependency group
   # so pre-commit, CI and local `uv run ruff` all agree.
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.16.6
+    rev: v0.16.8
     hooks:
       - id: ruff-check
         types_or: [python, pyi]
@@ -25,4 +25,10 @@ repos:
         entry: cargo clippy -- -D warnings
         language: system
         types: [rust]
+        pass_filenames: false
+      - id: pyrefly
+        name: pyrefly check
+        entry: uv run pyrefly check
+        language: system
+        types_or: [python, pyi]
         pass_filenames: false

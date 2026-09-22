@@ -37,8 +37,8 @@ classifiers = [
 license = "Apache-2.0"
 license-files = ["LICEN[CS]E*"]
 dependencies = [
-    "numpy>=1.20",
-    "scipy>=1.7",
+    "numpy>=1.21.6",
+    "scipy>=1.11",
 ]
 # Single-sourced from Cargo.toml by maturin.
 dynamic = ["version"]
@@ -54,6 +54,7 @@ dev = [
     "ruff==0.16.8",
     "pre-commit>=3",
     "hypothesis>=6",
+    "pyrefly==1.3.1",
 ]
 bench = [
     "implicit>=0.7",
@@ -76,6 +77,11 @@ markers = [
 ]
 # A truncated fit in a test is a bug unless the test says otherwise.
 filterwarnings = ["error::fastslim.ConvergenceWarning"]
+
+[tool.pyrefly]
+project-includes = ["python/fastslim", "tests"]
+search-path = ["python", "tests"]
+python-version = "3.10"
 
 [tool.ruff]
 target-version = "py310"

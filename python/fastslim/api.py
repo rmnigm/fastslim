@@ -2,21 +2,24 @@ from __future__ import annotations
 
 import warnings
 from collections.abc import Iterator
-from typing import Any
 
 import numpy as np
 from scipy import sparse
 
 from .native import solve_slim
-from .validation import check_integer, check_interaction_matrix, check_params
+from .validation import (
+    Matrix,
+    MatrixLike,
+    check_integer,
+    check_interaction_matrix,
+    check_params,
+)
 
 __all__ = ["ConvergenceWarning", "fit", "predict", "recommend"]
 
-SPARRAY: Any = getattr(sparse, "sparray", ())
-
 
 def solve(
-    matrix: Any,
+    matrix: sparse.csr_matrix,
     lambd: float,
     beta: float,
     max_iter: int,
@@ -50,13 +53,13 @@ class ConvergenceWarning(UserWarning):
 
 
 def fit_with_diagnostics(
-    interaction_matrix: Any,
+    interaction_matrix: MatrixLike,
     lambd: float,
     beta: float,
     max_iter: int,
     tol: float,
     n_threads: int | None,
-) -> tuple[Any, np.ndarray, np.ndarray]:
+) -> tuple[sparse.csr_matrix | sparse.csr_array, np.ndarray, np.ndarray]:
     """Validate, solve and assemble ``W``; shared by :func:`fit` and ``SLIM``.
 
     Returns ``(weights, n_passes, converged)``.
@@ -91,13 +94,13 @@ def fit_with_diagnostics(
 
 
 def fit(
-    interaction_matrix: Any,
+    interaction_matrix: MatrixLike,
     lambd: float = 0.5,
     beta: float = 0.5,
     max_iter: int = 1000,
     tol: float = 1e-4,
     n_threads: int | None = None,
-) -> sparse.csr_matrix:
+) -> sparse.csr_matrix | sparse.csr_array:
     """Fit SLIM item-item weights with non-negative coordinate descent.
 
     Returns ``W`` of shape ``(n_items, n_items)``, sparse and non-negative with
@@ -109,7 +112,7 @@ def fit(
     return weights
 
 
-def as_weights(weights: Any) -> Any:
+def as_weights(weights: MatrixLike) -> Matrix:
     """Return ``weights`` as a CSR matrix or a 2-D dense float64 array."""
     if sparse.issparse(weights):
         if weights.ndim != 2:
@@ -123,7 +126,7 @@ def as_weights(weights: Any) -> Any:
     return dense
 
 
-def prepare_history(user_history: Any, n_items: int) -> tuple[Any, bool]:
+def prepare_history(user_history: MatrixLike, n_items: int) -> tuple[Matrix, bool]:
     """Return ``(history, is_single_user)`` with ``history`` always 2-D.
 
     A sparse *matrix* of shape ``(1, n_items)`` counts as one user because
@@ -131,7 +134,7 @@ def prepare_history(user_history: Any, n_items: int) -> tuple[Any, bool]:
     """
     if sparse.issparse(user_history):
         single = user_history.ndim == 1 or (
-            not isinstance(user_history, SPARRAY) and user_history.shape[0] == 1
+            not isinstance(user_history, sparse.sparray) and user_history.shape[0] == 1
         )
         history = user_history
         if history.ndim == 1:
@@ -160,19 +163,19 @@ def prepare_history(user_history: Any, n_items: int) -> tuple[Any, bool]:
     return history, single
 
 
-def mask_seen(scores: np.ndarray, history: Any) -> None:
+def mask_seen(scores: np.ndarray, history: Matrix) -> None:
     """Set the score of every nonzero history entry to ``-inf``, in place."""
-    if sparse.issparse(history):
-        if history.nnz == 0:
-            return
-        rows = np.repeat(np.arange(history.shape[0]), np.diff(history.indptr))
-        nonzero = history.data != 0
-        scores[rows[nonzero], history.indices[nonzero]] = -np.inf
-    else:
+    if isinstance(history, np.ndarray):
         scores[history != 0] = -np.inf
+        return
+    if history.nnz == 0:
+        return
+    rows = np.repeat(np.arange(scores.shape[0]), np.diff(history.indptr))
+    nonzero = history.data != 0
+    scores[rows[nonzero], history.indices[nonzero]] = -np.inf
 
 
-def score_chunk(history: Any, weights: Any, exclude_seen: bool) -> np.ndarray:
+def score_chunk(history: Matrix, weights: Matrix, exclude_seen: bool) -> np.ndarray:
     """Dense ``float64`` scores for one slice of users."""
     product = history @ weights
     scores = product.toarray() if sparse.issparse(product) else np.asarray(product)
@@ -189,6 +192,16 @@ def chunks(n_rows: int, batch_size: int | None) -> Iterator[tuple[int, int]]:
     batch_size = check_integer(batch_size, "batch_size", 1)
     for start in range(0, n_rows, batch_size):
         yield start, min(start + batch_size, n_rows)
+
+
+def scored_chunks(
+    history: Matrix, weights: Matrix, exclude_seen: bool, batch_size: int | None
+) -> Iterator[tuple[slice, np.ndarray]]:
+    """Yield ``(rows, scores)`` for consecutive slices of users."""
+    for start, stop in chunks(np.shape(history)[0], batch_size):
+        rows = slice(start, stop)
+        # pyrefly: ignore[bad-argument-type]  # scipy is untyped; slices infer as sparray
+        yield rows, score_chunk(history[rows], weights, exclude_seen)
 
 
 def top_k_from_scores(scores: np.ndarray, k: int) -> np.ndarray:
@@ -212,8 +225,8 @@ def top_k_from_scores(scores: np.ndarray, k: int) -> np.ndarray:
 
 
 def predict(
-    weights: Any,
-    user_history: Any,
+    weights: MatrixLike,
+    user_history: MatrixLike,
     *,
     exclude_seen: bool = True,
     batch_size: int | None = None,
@@ -224,19 +237,17 @@ def predict(
     see `docs/api.md`.
     """
     weight_matrix = as_weights(weights)
-    history, single = prepare_history(user_history, weight_matrix.shape[0])
-    n_users = history.shape[0]
-    scores = np.empty((n_users, weight_matrix.shape[1]), dtype=np.float64)
-    for start, stop in chunks(n_users, batch_size):
-        scores[start:stop] = score_chunk(
-            history[start:stop], weight_matrix, exclude_seen
-        )
+    n_sources, n_items = np.shape(weight_matrix)
+    history, single = prepare_history(user_history, n_sources)
+    scores = np.empty((np.shape(history)[0], n_items), dtype=np.float64)
+    for rows, chunk in scored_chunks(history, weight_matrix, exclude_seen, batch_size):
+        scores[rows] = chunk
     return scores[0] if single else scores
 
 
 def recommend(
-    weights: Any,
-    user_history: Any,
+    weights: MatrixLike,
+    user_history: MatrixLike,
     k: int = 10,
     *,
     exclude_seen: bool = True,
@@ -248,12 +259,10 @@ def recommend(
     ``(n_users, k)``; see `docs/api.md`.
     """
     weight_matrix = as_weights(weights)
-    history, single = prepare_history(user_history, weight_matrix.shape[0])
-    n_items = weight_matrix.shape[1]
+    n_sources, n_items = np.shape(weight_matrix)
+    history, single = prepare_history(user_history, n_sources)
     k = min(check_integer(k, "k", 1), n_items)
-    n_users = history.shape[0]
-    top = np.empty((n_users, k), dtype=np.int64)
-    for start, stop in chunks(n_users, batch_size):
-        scores = score_chunk(history[start:stop], weight_matrix, exclude_seen)
-        top[start:stop] = top_k_from_scores(scores, k)
+    top = np.empty((np.shape(history)[0], k), dtype=np.int64)
+    for rows, scores in scored_chunks(history, weight_matrix, exclude_seen, batch_size):
+        top[rows] = top_k_from_scores(scores, k)
     return top[0] if single else top
