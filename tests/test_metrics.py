@@ -79,7 +79,7 @@ def test_users_without_test_items_are_skipped(metric, test_matrix):
     padded_test = sparse.vstack(
         [test_matrix, sparse.csr_matrix((4, N_ITEMS))], format="csr"
     )
-    padded_recs = np.vstack([RECOMMENDED, np.zeros((4, K), dtype=int)])
+    padded_recs = np.vstack([RECOMMENDED, np.tile(np.arange(K), (4, 1))])
 
     assert metric(padded_recs, padded_test, k=K) == pytest.approx(
         metric(RECOMMENDED, test_matrix, k=K)
@@ -93,10 +93,8 @@ def test_no_evaluable_users_gives_zero(metric):
 
 @pytest.mark.parametrize("metric", METRICS, ids=METRIC_IDS)
 def test_ranking_with_no_hits_scores_zero(metric, test_matrix):
-    # User 2 has only two non-held-out items, so its third slot repeats one;
-    # duplicates are irrelevant here because neither is a hit.
-    nothing = np.array([[0, 2, 4], [0, 1, 2], [1, 3, 3]])
-    assert metric(nothing, test_matrix, k=K) == 0.0
+    nothing = np.array([[0, 2], [0, 1], [1, 3]])
+    assert metric(nothing, test_matrix, k=2) == 0.0
 
 
 @pytest.mark.parametrize(
@@ -109,8 +107,8 @@ def test_perfect_ranking(metric, expected, test_matrix):
 
 
 def test_ndcg_rewards_putting_hits_first(test_matrix):
-    early = np.array([[1, 3, 0], [0, 0, 0], [0, 2, 4]])
-    late = np.array([[0, 1, 3], [0, 0, 0], [1, 0, 2]])
+    early = np.array([[1, 3, 0], [0, 1, 2], [0, 2, 4]])
+    late = np.array([[0, 1, 3], [0, 1, 2], [1, 0, 2]])
     assert metrics.ndcg_at_k(early, test_matrix, k=K) > metrics.ndcg_at_k(
         late, test_matrix, k=K
     )
@@ -133,6 +131,21 @@ def test_malformed_predictions_are_reported(predictions, message, test_matrix):
     k = 4 if message.startswith("need") else K
     with pytest.raises(ValueError, match=message):
         metrics.precision_at_k(predictions, test_matrix, k=k)
+
+
+@pytest.mark.parametrize(
+    ("predictions", "message"),
+    [
+        ([[3, 0, N_ITEMS], [0, 1, 2], [1, 4, 0]], "outside"),
+        ([[3, 0, 1], [0, 1, 2], [1, 4, -N_ITEMS]], "outside"),
+        ([[3, 3, 1], [0, 1, 2], [1, 4, 0]], "repeats"),
+    ],
+    ids=["id_past_last_item", "negative_id", "repeated_id"],
+)
+@pytest.mark.parametrize("metric", METRICS, ids=METRIC_IDS)
+def test_invalid_ranked_ids_are_rejected(metric, predictions, message, test_matrix):
+    with pytest.raises(ValueError, match=message):
+        metric(np.array(predictions), test_matrix, k=K)
 
 
 @pytest.mark.parametrize("metric", METRICS, ids=METRIC_IDS)
