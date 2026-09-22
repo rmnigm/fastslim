@@ -147,8 +147,8 @@ def test_all_zero_rows_and_columns():
     weights = fastslim.fit(sparse.csr_matrix(dense), **PARAMS)
 
     assert weights.shape == (4, 4)
-    assert weights[1].nnz == 0
-    assert weights[:, 1].nnz == 0
+    assert not to_dense(weights)[1].any()
+    assert not to_dense(weights)[:, 1].any()
     assert weights.nnz > 0
 
 

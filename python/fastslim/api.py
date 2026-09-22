@@ -165,14 +165,14 @@ def prepare_history(user_history: MatrixLike, n_items: int) -> tuple[Matrix, boo
 
 def mask_seen(scores: np.ndarray, history: Matrix) -> None:
     """Set the score of every nonzero history entry to ``-inf``, in place."""
-    if sparse.issparse(history):
-        if history.nnz == 0:
-            return
-        rows = np.repeat(np.arange(history.shape[0]), np.diff(history.indptr))
-        nonzero = history.data != 0
-        scores[rows[nonzero], history.indices[nonzero]] = -np.inf
-    else:
+    if isinstance(history, np.ndarray):
         scores[history != 0] = -np.inf
+        return
+    if history.nnz == 0:
+        return
+    rows = np.repeat(np.arange(scores.shape[0]), np.diff(history.indptr))
+    nonzero = history.data != 0
+    scores[rows[nonzero], history.indices[nonzero]] = -np.inf
 
 
 def score_chunk(history: Matrix, weights: Matrix, exclude_seen: bool) -> np.ndarray:
@@ -192,6 +192,16 @@ def chunks(n_rows: int, batch_size: int | None) -> Iterator[tuple[int, int]]:
     batch_size = check_integer(batch_size, "batch_size", 1)
     for start in range(0, n_rows, batch_size):
         yield start, min(start + batch_size, n_rows)
+
+
+def scored_chunks(
+    history: Matrix, weights: Matrix, exclude_seen: bool, batch_size: int | None
+) -> Iterator[tuple[slice, np.ndarray]]:
+    """Yield ``(rows, scores)`` for consecutive slices of users."""
+    for start, stop in chunks(np.shape(history)[0], batch_size):
+        rows = slice(start, stop)
+        # pyrefly: ignore[bad-argument-type]  # scipy is untyped; slices infer as sparray
+        yield rows, score_chunk(history[rows], weights, exclude_seen)
 
 
 def top_k_from_scores(scores: np.ndarray, k: int) -> np.ndarray:
@@ -227,13 +237,11 @@ def predict(
     see `docs/api.md`.
     """
     weight_matrix = as_weights(weights)
-    history, single = prepare_history(user_history, weight_matrix.shape[0])
-    n_users = history.shape[0]
-    scores = np.empty((n_users, weight_matrix.shape[1]), dtype=np.float64)
-    for start, stop in chunks(n_users, batch_size):
-        scores[start:stop] = score_chunk(
-            history[start:stop], weight_matrix, exclude_seen
-        )
+    n_sources, n_items = np.shape(weight_matrix)
+    history, single = prepare_history(user_history, n_sources)
+    scores = np.empty((np.shape(history)[0], n_items), dtype=np.float64)
+    for rows, chunk in scored_chunks(history, weight_matrix, exclude_seen, batch_size):
+        scores[rows] = chunk
     return scores[0] if single else scores
 
 
@@ -251,12 +259,10 @@ def recommend(
     ``(n_users, k)``; see `docs/api.md`.
     """
     weight_matrix = as_weights(weights)
-    history, single = prepare_history(user_history, weight_matrix.shape[0])
-    n_items = weight_matrix.shape[1]
+    n_sources, n_items = np.shape(weight_matrix)
+    history, single = prepare_history(user_history, n_sources)
     k = min(check_integer(k, "k", 1), n_items)
-    n_users = history.shape[0]
-    top = np.empty((n_users, k), dtype=np.int64)
-    for start, stop in chunks(n_users, batch_size):
-        scores = score_chunk(history[start:stop], weight_matrix, exclude_seen)
-        top[start:stop] = top_k_from_scores(scores, k)
+    top = np.empty((np.shape(history)[0], k), dtype=np.int64)
+    for rows, scores in scored_chunks(history, weight_matrix, exclude_seen, batch_size):
+        top[rows] = top_k_from_scores(scores, k)
     return top[0] if single else top

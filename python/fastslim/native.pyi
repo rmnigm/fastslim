@@ -1,7 +1,7 @@
 import numpy as np
 import numpy.typing as npt
 
-Indices = npt.NDArray[np.int32] | npt.NDArray[np.int64]
+Indices = npt.NDArray[np.int32 | np.int64]
 
 def solve_slim(
     data: npt.NDArray[np.float64],

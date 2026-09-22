@@ -88,15 +88,18 @@ def test_estimator_validates_at_fit_time(kwargs, exc, message):
         model.fit(GOOD)
 
 
-def test_numpy_scalar_hyperparameters_are_accepted():
-    weights = fastslim.fit(
-        GOOD,
-        lambd=np.float32(0.5),
-        beta=np.float64(0.5),
-        max_iter=np.int64(10),
-        n_threads=np.int32(1),
-    )
-    assert weights.shape == (3, 3)
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("lambd", np.float32(0.5)),
+        ("beta", np.float64(0.5)),
+        ("max_iter", np.int64(10)),
+        ("n_threads", np.int32(1)),
+    ],
+    ids=["lambd_float32", "beta_float64", "max_iter_int64", "n_threads_int32"],
+)
+def test_numpy_scalar_hyperparameters_are_accepted(name, value):
+    assert fastslim.fit(GOOD, **{name: value}).shape == (3, 3)
 
 
 @pytest.mark.parametrize(

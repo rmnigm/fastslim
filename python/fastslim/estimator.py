@@ -74,7 +74,7 @@ class SLIM:
         self.weights, self.n_passes, self.converged = api.fit_with_diagnostics(
             X, self.lambd, self.beta, self.max_iter, self.tol, self.n_threads
         )
-        self.n_items = int(self.weights.shape[0])
+        self.n_items = len(self.converged)
         return self
 
     def fitted_weights(self) -> sparse.csr_matrix | sparse.csr_array:

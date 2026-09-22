@@ -14,7 +14,7 @@ __all__ = [
     "check_params",
 ]
 
-Matrix = np.ndarray | sparse.spmatrix | sparse.sparray
+Matrix = np.ndarray | sparse.csr_matrix | sparse.csr_array
 MatrixLike = npt.ArrayLike | sparse.spmatrix | sparse.sparray
 
 
