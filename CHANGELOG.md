@@ -7,6 +7,8 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-23
+
 ### Changed
 
 - About 40% lower peak memory in `fit`; ML-1M drops from roughly 360 MB to 225 MB.
@@ -65,5 +67,6 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 Initial releases: a single `fastslim.fit` function and no published wheels.
 
-[Unreleased]: https://github.com/rmnigm/fastslim/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/rmnigm/fastslim/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/rmnigm/fastslim/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/rmnigm/fastslim/releases/tag/v0.2.0
