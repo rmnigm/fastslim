@@ -101,11 +101,7 @@ pub fn near_duplicate_items(
                 let u = rng.uniform();
                 // 4% of the entries deviate from the shared count.
                 row.push(if base == 0.0 {
-                    if u < 0.02 {
-                        1.0
-                    } else {
-                        0.0
-                    }
+                    if u < 0.02 { 1.0 } else { 0.0 }
                 } else if u < 0.02 {
                     0.0
                 } else if u < 0.04 {

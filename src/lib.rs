@@ -11,7 +11,7 @@ use numpy::{Element, PyArray1, PyArrayMethods, PyReadonlyArray1};
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 
-use solver::{solve_slim_csr, SlimError, SlimParams};
+use solver::{SlimError, SlimParams, solve_slim_csr};
 
 /// `(indptr, indices, data, n_passes, converged)`, see [`solve_slim`].
 type SolveOutput<'py> = (
@@ -43,7 +43,7 @@ where
             Err(_) => {
                 return Err(PyValueError::new_err(format!(
                     "{name}[{pos}] = {x} is negative or too large"
-                )))
+                )));
             }
         }
     }
