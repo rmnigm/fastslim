@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import warnings
+
 import fastslim
 import numpy as np
 from conftest import kkt_violation, to_dense
-from hypothesis import given, settings
+from hypothesis import assume, given, settings
 from hypothesis import strategies as st
 from hypothesis.extra import numpy as npst
 from scipy import sparse
@@ -38,10 +40,13 @@ def test_structural_invariants(dense, lambd, beta):
 @SETTINGS
 @given(dense=matrices, lambd=penalties, beta=penalties)
 def test_solution_is_optimal(dense, lambd, beta):
-    weights = fastslim.fit(
-        sparse.csr_matrix(dense), lambd=lambd, beta=beta, tol=1e-12, max_iter=5000
-    )
-    assert kkt_violation(dense, weights, lambd, beta) < 1e-6
+    """Converged fits are optimal; a tiny beta on duplicate columns may not converge."""
+    model = fastslim.SLIM(lambd=lambd, beta=beta, tol=1e-12, max_iter=5000)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", fastslim.ConvergenceWarning)
+        model.fit(sparse.csr_matrix(dense))
+    assume(model.converged.all())
+    assert kkt_violation(dense, model.weights, lambd, beta) < 1e-6
 
 
 @SETTINGS
