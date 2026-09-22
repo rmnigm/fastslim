@@ -20,6 +20,7 @@ impl<T> PerThread<T> {
 
     /// Run `f` with the calling worker's slot.
     pub fn with<R>(&self, f: impl FnOnce(&mut T) -> R) -> R {
+        // Rayon may run small inputs on the calling thread, which has no worker index.
         let slot = rayon::current_thread_index().unwrap_or(0) % self.slots.len();
         let mut guard = self.slots[slot]
             .lock()

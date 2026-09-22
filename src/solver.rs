@@ -148,7 +148,7 @@ fn cd_pass<I: Iterator<Item = usize>>(
                 let tj = unsafe { *pos.get_unchecked(j as usize) };
                 if tj != NOT_CAND {
                     debug_assert!((tj as usize) < r.len());
-                    // SAFETY: entries of pos other than NOT_CAND index this item's r; solve_item resets pos before returning, and its early return precedes any write.
+                    // SAFETY: non-NOT_CAND pos entries index r; solve_item leaves pos all NOT_CAND.
                     unsafe { *r.get_unchecked_mut(tj as usize) -= v * delta };
                 }
             }
