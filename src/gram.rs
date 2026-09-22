@@ -172,6 +172,8 @@ impl Gram {
     ) -> Self {
         debug_assert_eq!(indptr.len(), n_rows + 1);
         debug_assert_eq!(indices.len(), data.len());
+        // User and item indices are stored as u32.
+        debug_assert!(n_rows < u32::MAX as usize && n_cols < u32::MAX as usize);
 
         let csc = transpose_csr(data, indices, indptr, n_rows, n_cols);
         let spas = PerThread::new(|| Spa::new(n_cols));
